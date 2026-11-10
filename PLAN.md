@@ -308,10 +308,15 @@ Boxes start from the prototype's and are snapped to parent faces by `nested_grid
 - Vertical: one set of faces shared by all levels, surface-intensified, down to the shelf
   level's maximum depth; the inner levels use the upper part.
 - Tracers: `T`, `S`, and one passive tracer released in the bay to show the upscale exchange.
-- Outer boundary: Flather with tidal harmonics through Oceananigans' `TidalHarmonics` and
-  `tidal_boundary_conditions`; `T`, `S` from GLORYS through NE's `DataWrangling`.
+- Outer boundary, with the GLORYS fields through NE's `DataWrangling`:
+  - `U`, `V`: Flather, with exterior transport and sea level the sum of the tidal harmonics
+    (Oceananigans' `TidalHarmonics` and `tidal_boundary_conditions`) and GLORYS' sea level and
+    depth-integrated currents. GLORYS has no tide, so the two add.
+  - `u`, `v`: the full GLORYS currents, normal and tangential, as for a nest's sides (3.3).
+  - `T`, `S`: GLORYS, as the exterior value of a `TracerReservoir`.
 - Surface: prescribed atmosphere (ERA5 or JRA55), one `EarthSystemModel` per level (D3).
-- Initial state: GLORYS on the shelf; inner levels interpolated from their parent.
+- Initial state: GLORYS `T`, `S`, currents and sea level on the shelf; inner levels interpolated
+  from their parent.
 
 Open points for this case:
 - A tidal atlas for the outer boundary (TPXO or FES) needs a data source and license. Until
