@@ -76,3 +76,25 @@ end
         @test all(heights(parent_bottom_height)[inner...] .≈ rounded_height)
     end
 end
+
+@testset "refer_to_mean_sea_level!" begin
+    # heights from the lowest tide, across a beach: deep water, shallows and land
+    beach(λ, φ) = 5 * (λ + 6) - 2
+    lowest_tide(λ, φ) = -3 - (φ - 52) / 2
+    tide_grid = LatitudeLongitudeGrid(size=(4, 5, 1), longitude=(-11, -1), latitude=(48, 56), z=(-1, 0))
+
+    for tide in (lowest_tide, bottom_height_field(tide_grid, lowest_tide), -3)
+        bottom_height = bottom_height_field(parent_grid, beach)
+        refer_to_mean_sea_level!(bottom_height, tide; minimum_depth)
+
+        expected = tide isa Number ? (λ, φ) -> beach(λ, φ) + tide : (λ, φ) -> beach(λ, φ) + lowest_tide(λ, φ)
+        expected = heights(bottom_height_field(parent_grid, expected))
+        referred = heights(bottom_height)
+
+        deep, land = expected .< -minimum_depth, expected .> -minimum_depth / 2
+        @test any(deep) && any(land) && any(.!deep .& .!land)
+        @test referred[deep] ≈ expected[deep]
+        @test all(referred[land] .== 0)
+        @test all(referred[.!deep .& .!land] .== -minimum_depth)
+    end
+end

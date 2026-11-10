@@ -14,15 +14,17 @@ using Printf
 refinement = 5
 width = 3 # parent cells
 minimum_depth = 10
-z = [-250 * (1 - k / 14)^1.7 for k in 0:14]
+lowest_tide = 0 # m relative to mean sea level; EMODnet heights are from the lowest astronomical tide
+z = vcat(-reverse(cumsum(0.5 .* 1.076 .^ (0:49))), 0) # 50 layers, 0.5 m thick at the surface, down to 250 m
 
-shelf_grid = LatitudeLongitudeGrid(size=(220, 245, 14), longitude=(-10.5, -2.5), latitude=(49, 54.5), halo=(7, 7, 4); z)
+shelf_grid = LatitudeLongitudeGrid(size=(220, 245, 50), longitude=(-10.5, -2.5), latitude=(49, 54.5), halo=(7, 7, 4); z)
 approaches_grid = nested_grid(shelf_grid; longitude=(-6.4, -4.6), latitude=(51.3, 52.4), depth=150, refinement)
 bay_grid = nested_grid(approaches_grid; longitude=(-5.50, -5.06), latitude=(51.68, 51.94), depth=95, refinement)
 
 function emodnet_bottom_height(grid; interpolation_passes, major_basins=Inf)
     metadatum = Metadatum(:bottom_height; dataset=EMODnet2024(), region=BoundingBox(grid))
-    return regrid_bathymetry(grid, metadatum; minimum_depth, interpolation_passes, major_basins)
+    bottom_height = regrid_bathymetry(grid, metadatum; interpolation_passes, major_basins)
+    return refer_to_mean_sea_level!(bottom_height, lowest_tide; minimum_depth)
 end
 
 shelf_bottom = emodnet_bottom_height(shelf_grid; interpolation_passes=4, major_basins=1)
@@ -40,32 +42,36 @@ levels = (shelf = (shelf_grid, shelf_bottom), approaches = (approaches_grid, app
 ##### Column volumes
 #####
 
-function column_volumes(grid, bottom_height, minimum_fractional_cell_height)
-    grid = ImmersedBoundaryGrid(grid, PartialCellBottom(bottom_height; minimum_fractional_cell_height))
+function column_volumes(grid, immersed_boundary)
+    grid = ImmersedBoundaryGrid(grid, immersed_boundary)
     Nx, Ny, _ = size(grid)
     return [Azᶜᶜᶜ(i, j, 1, grid) * static_column_depthᶜᶜᵃ(i, j, grid) for i in 1:Nx, j in 1:Ny]
 end
 
-for minimum_fractional_cell_height in (0.2, 0), (parent, nest) in ((:shelf, :approaches), (:approaches, :bay))
+immersed_boundaries = (("partial cells", PartialCellBottom),
+                       ("partial cells of any thickness", bottom -> PartialCellBottom(bottom; minimum_fractional_cell_height=0)),
+                       ("full cells", GridFittedBottom))
+
+for (name, immersed_boundary) in immersed_boundaries, (parent, nest) in ((:shelf, :approaches), (:approaches, :bay))
     (parent_grid, parent_bottom), (grid, bottom) = levels[parent], levels[nest]
     i, j, _ = parent_indices(parent_grid, grid)
     inner = (1+width:length(i)-width, 1+width:length(j)-width)
 
-    nest_volume = reshape(column_volumes(grid, bottom, minimum_fractional_cell_height), refinement, length(i), refinement, length(j))
+    nest_volume = reshape(column_volumes(grid, immersed_boundary(bottom)), refinement, length(i), refinement, length(j))
     nest_volume = dropdims(sum(nest_volume, dims=(1, 3)), dims=(1, 3))[inner...]
-    parent_volume = column_volumes(parent_grid, parent_bottom, minimum_fractional_cell_height)[i, j][inner...]
+    parent_volume = column_volumes(parent_grid, immersed_boundary(parent_bottom))[i, j][inner...]
     parent_depth = -min.(0, Array(interior(parent_bottom, i, j, 1)))[inner...]
 
     mismatch = abs.(parent_volume .- nest_volume) ./ max.(parent_volume, nest_volume, 1)
     differing = mismatch .> 1e-6
     rounded = parent_depth .≤ minimum_depth
 
-    @printf("%s ← %s with a minimum fractional cell height of %.1f: %d parent columns in the feedback region, %d wet\n",
-            parent, nest, minimum_fractional_cell_height, length(mismatch), count(>(0), parent_volume))
+    @printf("%s ← %s with %s: %d parent columns in the feedback region, %d wet\n", parent, nest, name, length(mismatch), count(>(0), parent_volume))
     @printf("    total volume: parent %.6e m³, nest %.6e m³, relative difference %.2e\n",
             sum(parent_volume), sum(nest_volume), (sum(parent_volume) - sum(nest_volume)) / sum(nest_volume))
     @printf("    columns differing by more than 1e-6: %d, of which %d at or below the minimum depth\n",
             count(differing), count(differing .& rounded))
+    @printf("    mean relative difference over the wet columns: %.2e\n", sum(mismatch) / count(>(0), max.(parent_volume, nest_volume)))
     @printf("    largest relative difference in the other columns: %.2e\n", maximum(mismatch[.!rounded]))
 end
 
@@ -74,7 +80,7 @@ end
 #####
 
 Δt = 2minutes
-stop_time = 1hour
+stop_time = 20minutes
 
 for (n, name) in enumerate(keys(levels))
     grid, bottom_height = levels[name]

@@ -1,7 +1,7 @@
 module OnlineNesting
 
 export nested_grid, parent_indices
-export EMODnet2024, blend_parent_bottom!, restrict_bottom!
+export EMODnet2024, refer_to_mean_sea_level!, blend_parent_bottom!, restrict_bottom!
 
 using Oceananigans.Architectures: architecture
 using Oceananigans.BoundaryConditions: fill_halo_regions!

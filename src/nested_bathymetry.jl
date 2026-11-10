@@ -9,6 +9,26 @@ end
 """
 $(TYPEDSIGNATURES)
 
+Refer `bottom_height` [m], measured from the lowest astronomical tide, to mean sea level by
+adding `lowest_tide`, the height [m] of the lowest astronomical tide relative to mean sea level
+(negative): a number, a function of longitude and latitude, or a field, which is interpolated to
+the grid of `bottom_height`. Land is set to zero height; columns left shallower than half of
+`minimum_depth` [m] become land and the other wet columns are at least `minimum_depth` deep.
+"""
+function refer_to_mean_sea_level!(bottom_height, lowest_tide; minimum_depth = 0)
+    datum_height = Field{Center, Center, Nothing}(bottom_height.grid)
+    set!(datum_height, lowest_tide)
+
+    height = Array(interior(bottom_height, :, :, 1)) .+ Array(interior(datum_height, :, :, 1))
+    set!(bottom_height, limit_depth.(height, minimum_depth))
+    fill_halo_regions!(bottom_height)
+
+    return bottom_height
+end
+
+"""
+$(TYPEDSIGNATURES)
+
 Blend the `bottom_height` [m] of a nest toward `parent_bottom_height`, the bottom height on its
 parent grid, over the outermost `width` parent cells of the nest. The nest takes its parent's
 bottom along its boundary and keeps its own `width` parent cells inward, with a linear ramp

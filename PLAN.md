@@ -452,6 +452,27 @@ sequential enough that orchestration would cost more than it saves.
   - Not covered: GPU and `Float32` grids are untested; a `Metadatum` without a region asks the
     server for the whole dataset; `width = 0` in the blend gives NaN along the boundary; nothing
     checks that a nest's feedback region stays clear of its parent's own blended rim.
+- 2026-11-10, session E continued, after review with the user:
+  - `refer_to_mean_sea_level!(bottom_height, lowest_tide; minimum_depth)` in
+    `src/nested_bathymetry.jl` adds the height of the lowest astronomical tide relative to mean
+    sea level (a number, a function or a field on any grid) to a bottom height measured from
+    the lowest tide, then applies the minimum-depth rule. The sea surface cannot absorb the
+    datum offset, which varies across the domain (from memory, under 1 m off south-east Ireland
+    to 6–7 m in the upper Bristol Channel), so it goes into the bathymetry. Tests: 12 more
+    assertions, 171 of 171 passing.
+  - The validation script calls it between regridding (now with no minimum depth) and blending,
+    with `lowest_tide = 0`: no correction is applied yet. A real field needs a tidal atlas, or
+    the shelf model's own lowest sea level, and that run also needs an atlas at its boundary.
+    This is the same open point as the tide source in section 5.
+  - Decided by the user: partial cells (after trying full cells), and 50 layers 0.5 m thick at
+    the surface, stretching by 7.6% per layer to 250 m, in place of 14. The nests have 42
+    layers (to 141 m) and 37 (to 97 m).
+  - Full cells on the earlier 14 layers, for the record: 708 of 1849 and 832 of 2860 parent
+    columns differ from their nests, by 4.4% and 7.6% on average and up to 36% and 42%; totals
+    −3.8e-5 and −3.3e-4; rest exactly zero. Every bottom snaps to a face, and so does the mean.
+  - The validation script now reports column volumes for partial cells, partial cells of any
+    thickness and full cells, and runs the rest check with partial cells for 20 minutes. Its
+    numbers on 50 layers were not in when this was merged; they follow in the next entry.
 
 ## 7. Risks
 
