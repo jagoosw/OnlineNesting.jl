@@ -1,0 +1,16 @@
+name = "OnlineNesting"
+uuid = "96644dbe-32ff-45cb-8335-a90902b5ba9b"
+version = "0.1.0"
+authors = ["Jago <jagostrongwright@gmail.com>"]
+
+[deps]
+CairoMakie = "13f3f980-e62b-5c42-98c6-ff1f3baf88f0"
+DocStringExtensions = "ffbed154-4ef7-542d-bbb7-c09d3a79fcae"
+NumericalEarth = "904d977b-046a-4731-8b86-9235c0d1ef02"
+Oceananigans = "9e8cae18-63c1-5223-a75c-80ca9d6e9a09"
+
+[compat]
+CairoMakie = "0.15.17"
+DocStringExtensions = "0.9"
+NumericalEarth = "0.9.2"
+Oceananigans = "0.117.2"

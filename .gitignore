@@ -1,0 +1,10 @@
+/Manifest.toml
+test/Manifest.toml
+
+*.jl.cov
+*.jl.*.cov
+*.jl.mem
+
+*.nc
+*.jld2
+*.mp4

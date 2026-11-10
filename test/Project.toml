@@ -1,0 +1,8 @@
+[deps]
+OnlineNesting = "96644dbe-32ff-45cb-8335-a90902b5ba9b"
+Oceananigans = "9e8cae18-63c1-5223-a75c-80ca9d6e9a09"
+ParallelTestRunner = "d3525ed8-44d0-4b2c-a655-542cee43accc"
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+
+[sources]
+OnlineNesting = {path = ".."}
