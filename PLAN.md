@@ -793,7 +793,12 @@ sequential enough that orchestration would cost more than it saves.
     sponge. A bare Oceananigans 0.117.2 model, 20 × 20 × 4 with open west and east sides, a
     gravity-wave radiation condition toward a 0.1 m exterior level, `NormalFlowBoundaryCondition(0)`
     on `u` and a `TracerReservoir` of 35, gives 4.7e-3 on z-star after 40 steps and exactly 0 on
-    static `z`. The cause was not traced. The test marks the child's assertion `@test_broken`
+    static `z`. Cause, traced afterwards: the filtered transport `Ũ` that advects tracers is built
+    with `U`'s boundary conditions, and after the substeps `step_free_surface!` fills its halos
+    with them, so on an open face `Ũ` is the radiation condition's end-of-step `U` (equal to 4
+    digits in the bare model), not the weighted mean of the transports the substeps used. In
+    the cells beside the open side `η̅ − η⁻ + Δt ∇·Ũ` is then 7.6e-3 m of a 4e-2 m change on the
+    first step, against 1e-17 in the interior, and z-star turns that into tracer. The test marks the child's assertion `@test_broken`
     on z-star. So z-star is supported by the feedback, and the one-way boundary of a z-star
     child is not tracer-consistent until this is fixed in Oceananigans.
   - Tests: 247 pass and 1 is marked broken, of 248.
