@@ -32,7 +32,7 @@ z = [-250, -150, -95, -40, 0]
 #####
 
 shelf_grid = LatitudeLongitudeGrid(arch; size=(110, 122, 4), longitude=(-10.5, -2.5), latitude=(49, 54.5), halo=(7, 7, 4),
-                                   topology=(Open, Open, Bounded); z)
+                                   topology=(Open, Open, Bounded), z)
 approaches_grid = nested_grid(shelf_grid; longitude=(-6.4, -4.6), latitude=(51.3, 52.4), depth=150, refinement)
 bay_grid = nested_grid(approaches_grid; longitude=(-5.50, -5.06), latitude=(51.68, 51.94), depth=95, refinement)
 

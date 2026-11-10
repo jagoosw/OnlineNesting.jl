@@ -648,10 +648,11 @@ sequential enough that orchestration would cost more than it saves.
 
         | | parent, largest | composite, largest | composite, end |
         |---|---|---|---|
-        | feedback on | 8.2 % | 10.9 % | −2.3 % |
+        | feedback on | 6.7 % | 10.9 % | −2.3 % |
         | feedback off | 5e-6 | 11.3 % | −2.1 % |
 
-        Composite is the parent outside the nest plus the whole child. It moves by a tenth
+        Composite is the parent outside the nest plus the whole child; with feedback on, the
+        start is the state after the restriction at initialization. It moves by a tenth
         with or without feedback, as the blob crosses the nest's sides on two grids that carry
         it differently; this is what flux correction (milestone 7) is for. These numbers are
         from a run outside the tests, which assert only that the blob leaves and returns and
@@ -672,8 +673,10 @@ sequential enough that orchestration would cost more than it saves.
       nest's first step. It gives the same result each time.
     - The kernel writes into a parent land cell that the child has as sea.
     - Not run: GPU, z-star, a nest with feedback on the real partial-cell grids (the reviewer
-      ran one partial-cell case, which matched to 1.1e-13), and `validation/pembrokeshire_tide.jl`
-      after its edit to pass `width`. That script now feeds temperature back.
+      ran one partial-cell case, which matched to 1.1e-13).
+    - `validation/pembrokeshire_tide.jl` now feeds temperature back. It had a doubled semicolon
+      from the unrun `arch` edit, fixed here. Run for 3 control steps and 2 tide steps only: the
+      control speeds are those of the one-way run (1.2e-7, 4.1e-7 and 1.4e-6 m s⁻¹).
   - `validation/idealized_nests.jl` records two videos of three idealized levels: the blob in
     a 12° channel (`idealized_blob.mp4`) and the wave (`idealized_wave.mp4`). Not tracked.
   - Merging: `src/OnlineNesting.jl` and `validation/pembrokeshire_tide.jl` are also changed,
