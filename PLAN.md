@@ -7,7 +7,7 @@ barotropic transport and sea level) to the parent. The outermost level is any Nu
 case is three levels: NW European shelf → Pembrokeshire approaches → St Brides Bay.
 
 Versions this plan was checked against: Oceananigans 0.117.2, NumericalEarth 0.9.2, Julia 1.12.
-Nothing in this plan has been run; every check below is still to be done.
+Milestones 0–2 have been run (status log, section 6); the checks of later milestones are still to be done.
 
 ## 1. Decisions
 
@@ -387,6 +387,82 @@ sequential enough that orchestration would cost more than it saves.
   - Not covered: GPU; the docstring example is not run by any test or docs build; a nest
     crossing a periodic parent's seam is truncated at the seam; a requested box reaching the
     parent's edge snaps to it with no check that a margin remains for the exchanger.
+- 2026-11-10, session B (milestone 2):
+  - Built: `StateExchanger(parent)`, `nested_boundary_conditions(exchanger, grid)` and
+    `nested_forcings(exchanger, grid; rate, width)` in `src/state_exchanger.jl`;
+    `TwoWayNestedModel(parent, child, exchanger; refinement)` in `src/two_way_nested_model.jl`,
+    with `time_step!` and `update_state!` (the only methods `Simulation` and `run!` asked for).
+  - **User-facing shape, for review.** Departure from 3.2: there is no `nested_ocean`. The user
+    builds the child with its own constructor and passes it the nest's boundary conditions and
+    forcings, and the exchanger is the third argument of the nest:
+    ```julia
+    exchanger = StateExchanger(parent)
+    child = HydrostaticFreeSurfaceModel(grid; boundary_conditions = nested_boundary_conditions(exchanger, grid),
+                                              forcing = nested_forcings(exchanger, grid; rate, width), ...)
+    model = TwoWayNestedModel(parent, child, exchanger)
+    ```
+    Reason: under D3 every level is built by the user through `ocean_simulation` and
+    `EarthSystemModel`, so a builder would have to forward all of their keywords, and the
+    plan's two-argument `TwoWayNestedModel(approaches, bay)` had no source for the exchanger.
+    Three levels compose as `TwoWayNestedModel(shelf, TwoWayNestedModel(approaches, bay, e₂), e₁)`
+    with `e₂ = StateExchanger(approaches)`; this is on paper only, milestone 3 runs it.
+  - Checks, `test/test_one_way_nest.jl`, 14 assertions, all pass (144 of 144 with session A's).
+    Setup: 40 × 40 × 4 parent over 10° × 10°, 100 m deep, closed sides; nest over the central
+    4° × 4° at refinement 3 in space and time; `T`, `S` with a linear stratification; split
+    Runge-Kutta 3, 20 barotropic substeps, parent step 5 minutes; sponge 4 cells at 1/hour.
+    - Check A, rest: after 24 parent steps run through `Simulation`, `u`, `v`, `η` and the
+      horizontal variation of `T` are exactly 0 on both levels (asserted below 1e-12), the
+      clocks agree, and the child has taken 3 steps per parent step.
+    - Check B, wave: a 0.1 m Gaussian bump of 1° standard deviation west of the nest, 80 parent
+      steps. The largest difference between the child's block-averaged `η` and the parent's
+      `η` over the nest is 3.6 % of the largest `η` in the nest (asserted below 5 %). With a
+      0.5° bump (two parent cells) it is 12.5 %, so the difference follows resolution.
+      Reflection is not measured separately; this one number bounds it. Sponge rates of 0,
+      1/hour and 1/10 minutes give 3.8 %, 3.6 % and 3.4 %.
+  - The four items of 3.3:
+    1. `Interpolated` inside the Flather tuple: not as it stands. The model does not regularize
+       the elements of a tuple condition, so `nested_boundary_conditions` tags each with its
+       side by calling `regularize_boundary_condition` itself. The sea level's copy is held at
+       `(Center, Center, Nothing)` so it is interpolated at the transport's two-dimensional node.
+    2. Normal velocity and barotropic transport with several layers: consistent. At the child's
+       open faces after the wave run, `|∫u dz − U|` and `|∫v dz − V|` are below 1e-16 with `|U|`
+       up to 0.24 m² s⁻¹ (asserted below 1e-12). Oceananigans' barotropic corrector covers the
+       boundary faces, so the condition on `u` sets only the departure from the depth mean.
+    3. The Breeze `StateExchanger`: no precedent. It follows a prescribed parent's fixed time
+       axis and never rewrites times. Here the nest records the parent into level 1 just before
+       the parent steps and into level 2 just after, then reassigns each series' `times` to
+       `range(t, t + Δt; length=2)`; a changing `Δt` needs nothing more. Recording before the
+       step, not shifting level 2 down, means a parent state changed between steps (by `set!`
+       now, by feedback later) is what the child starts from. The first version shifted, and
+       a parent set after the exchanger was built gave the child 0.05 m s⁻¹ from rest.
+    4. `inpaint_mask!` every step: too expensive (a `deepcopy` per call, and two host-side
+       reductions per pass), and nothing computes the fill pattern once. Nothing built.
+  - Departures from the plan:
+    - No land fill in the exchanger. The reviewer ran a parent with land touching the nest's
+      side: 0.021 m s⁻¹ and a 0.46 °C tracer error from rest in three steps. Milestone 6 needs
+      a fill computed once.
+    - The series cover the whole parent grid, not a window around the child.
+    - The normal velocity has no radiation scheme: it takes the parent's `u`, `v` directly.
+    - `feed_back!` is not defined; milestone 4 adds the call after the child's steps.
+    - `exchange_state!` from NumericalEarth is not extended; `store_state!(exchanger, level)`
+      does the copy.
+    - No `ocean_model` or `outer_level` accessors: the parent must be a bare
+      `HydrostaticFreeSurfaceModel` and the child a single model. Milestone 3 needs them for a
+      nested child, and D3 for an `EarthSystemModel`.
+  - Known and not fixed:
+    - `Simulation` callbacks passed to the nest's `time_step!` and `update_state!` are dropped.
+    - A child tracer the parent lacks gets no boundary condition or sponge, silently.
+    - Read from the source, not measured: under split Runge-Kutta the barotropic substep clock
+      of stage 3 starts at `t + Δt/2` and runs a full `Δt`, so on a child's last step of a parent
+      step the Flather values are queried past the window and clamp to the parent's newest level.
+    - The clocks agree exactly only when `Δt / refinement` is representable; with `Δt = 0.1`
+      the reviewer saw them differ by 1e-13 after 200 steps. Milestone 3's check has to allow
+      for this or the nest has to set the child's time.
+    - Before the first step the exchanger holds zeros, so halos filled by `set!` on the child
+      are wrong until the child's first step refreshes them.
+    - The sponge `width` counts mean cells, which is not the actual cells of a stretched nest.
+    - The wave test passes without the sponge, so the sponge is covered only by the rest test.
+    - Not run: GPU, an immersed or z-star child, a parent with open sides.
 
 ## 7. Risks
 
