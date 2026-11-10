@@ -12,6 +12,9 @@ NCDatasets = "85f8d34a-cbdd-5861-8df4-14fed0d494ab"
 NumericalEarth = "904d977b-046a-4731-8b86-9235c0d1ef02"
 Oceananigans = "9e8cae18-63c1-5223-a75c-80ca9d6e9a09"
 
+[sources]
+Oceananigans = {path = "/Users/jago/Documents/Oceananigans-0.117.2-open-boundary-fix"}
+
 [compat]
 CairoMakie = "0.15.17"
 DocStringExtensions = "0.9"
