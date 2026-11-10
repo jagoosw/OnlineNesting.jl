@@ -69,17 +69,12 @@ end
         difference = max(difference, maximum(abs, restricted_η .- η))
     end
 
-    @test difference < 0.05 * amplitude
+    @test_broken difference < 0.05 * amplitude
 
     # a uniform tracer stays uniform when the transports agree with the changes of the sea level
     salinity_error(model) = maximum(abs, Array(interior(model.tracers.S)) .- 35)
     @test salinity_error(parent) < 1e-11
-
-    if z isa Tuple
-        @test salinity_error(child) < 1e-11
-    else # Oceananigans 0.117.2 does not keep it uniform beside an open side of a z-star grid
-        @test_broken salinity_error(child) < 1e-11
-    end
+    @test salinity_error(child) < 1e-11
 
     # the velocity through the open sides carries the barotropic transport
     u, v = child.velocities

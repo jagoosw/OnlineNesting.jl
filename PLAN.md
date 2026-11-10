@@ -7,7 +7,7 @@ barotropic transport and sea level) to the parent. The outermost level is any Nu
 case is three levels: NW European shelf → Pembrokeshire approaches → St Brides Bay.
 
 Versions this plan was checked against: Oceananigans 0.117.2, NumericalEarth 0.9.2, Julia 1.12.
-Milestones 0–6 have been run (status log, section 6); the checks of later milestones are still to be done.
+Milestones 0–7 have been run (status log, section 6); the checks of later milestones are still to be done.
 
 ## 1. Decisions
 
@@ -829,6 +829,114 @@ sequential enough that orchestration would cost more than it saves.
   Until it is released the `@test_broken` in `test/test_two_level_nest.jl` stands; once it is,
   that assertion passes and has to become a `@test`. The pull request's own tests ran on CPU
   for three files only; its CI has not been read.
+- 2026-11-10, session F (milestone 7), on branch `session-f` in `.claude/worktrees/session-f`, because the main
+  working tree had another session's uncommitted edits. **Pause for review.**
+  - **Oceananigans.** Everything here ran on 0.117.2 with the fix of CliMA/Oceananigans.jl#6485 applied (the
+    user's instruction for this and later sessions). The branch itself does not load in this environment (it
+    sits on a newer `main` that needs a newer DocStringExtensions), so the fix commit's `src` diff was applied
+    to a copy of 0.117.2 and the untracked `Manifest.toml` points at the copy. `Project.toml` is unchanged, so
+    a fresh resolve gets the release, on which the z-star child assertion below fails.
+  - Built, all in `src/two_way_nested_model.jl`:
+    - Each nest holds, on the parent grid, one field of volume mismatch and one of tracer mismatch per parent
+      tracer, and two callbacks at the `TracerTendencyCallsite`, one for its parent and one for its child. In
+      the last stage of every step of a level the callback adds `Δt` times the level's volume and tracer
+      fluxes through the edge of the feedback region to the parent cells just outside it: out of them for
+      the parent, into them for the child. The fluxes are Oceananigans' own `tracer_flux_x`, `tracer_flux_y`
+      (advective plus diffusive, from its yin-yang conservation fixer) with the stage's transport velocities;
+      the volume flux is the centered flux of a tracer equal to one.
+    - `feed_back!` first applies the mismatch to those cells, then zeroes it, then restricts as before. The
+      sea level rises by the column's volume mismatch over its area. Each tracer is corrected layer by
+      layer: a wet layer keeps the share of the column's volume change that z-star gives it and passes the
+      rest of the volume it took upward, carrying the mean of its tracer and the next layer's; a land layer
+      passes everything upward. Written as an increment, so no mismatch leaves the fields bitwise unchanged.
+    - Bare models and nests get the callback through `time_step!`'s `callbacks`; an `EarthSystemModel` steps
+      its ocean without them, so the callback is added to its ocean simulation at construction (with a TODO
+      for NumericalEarth).
+  - **Departures from 3.6, for review.**
+    - The interface is the edge of the feedback region, not the child's boundary, so the rim stays (`width`
+      at least 1 is what was tested; the first reviewer's sweep also conserved at `width = 0`). The child's
+      faces there are ordinary interior faces, with no open-boundary or sponge terms. The composite that is
+      conserved is therefore **the parent outside the feedback region plus the child inside it**, not
+      session C's and D's "parent outside the nest plus the whole child"; numbers are not comparable with
+      their tables. This settles the "rim versus flux correction" risk of section 7 without removing the rim.
+    - Conditions: nothing forces the child inside the feedback region, so the sponge must end within the rim
+      (`nested_forcings`' `width` in child cells at most `width × refinement`); a sponge of 7 or 9 child
+      cells against a rim of 6 gave a composite tracer error of 4.7e-6. An inner nest's feedback region and
+      the cells around it must lie inside the outer nest's: with the two edges touching, composite volume
+      was off by 9.6e-4 and tracer by 8.9e-7.
+    - The correction is the mismatch of the per-layer transports, which the plan's "volume through `η`" alone
+      would not keep consistent with the tracers: z-star spreads a sea level change over the layers by
+      thickness, a sheared mismatch does not, hence the upward transport in the tracer correction.
+  - What was measured first, on bare models (CPU, 24 × 16 × 4 channel, sheared flow, 0.1 m bump):
+    - A closed model alone, 100 steps: tracer content drifts 6.9e-4 on a static grid (the top cells do not
+      hold what a rising sea level carries) and 6.7e-16 on z-star. **So round-off tracer conservation exists
+      only on z-star**, with or without nesting.
+    - One step, a box of columns: content change against `Δt` times the recomputed last-stage fluxes through
+      the box's sides closes to 7e-14 of the change for tracers on z-star (centered; WENO 5 with horizontal
+      diffusion; the same over partial cells) and to 4e-14 for volume on both coordinates. This confirms the
+      reading in 3.6 that only the last stage's flux enters the update.
+  - Checks. Tests: 20 assertions in the new `test/test_flux_correction.jl`; the bathymetry cases in it were
+    written by a second agent. The suite: 266 pass and 2 are marked broken, of 268 (247 and 1 of 248 before).
+    Refinement 3, `width = 2`, sponge 4 child cells, 5 minute steps.
+    - Check A, composite conservation, largest departure over the run, relative to the initial tracer
+      content and to the volume of the bump:
+
+      | | tracer | volume | steps |
+      |---|---|---|---|
+      | z-star, two levels | 4.4e-16 | 7.4e-15 | 100 |
+      | z-star, two levels, correction off | 3.0e-2 | 3.4e-3 | 100 |
+      | z-star, WENO 5 and diffusion, partial cells | 4.4e-16 | 4.5e-15 | 100 |
+      | z-star, three levels | 2.2e-16 | 1.3e-15 | 20 |
+      | z-star, two `EarthSystemModel` levels | 4.4e-16 | 1.1e-15 | 20 |
+      | static, two levels | 5.0e-4 | 7.6e-15 | 100 |
+      | static, two levels, correction off | 2.9e-2 | 3.2e-3 | 100 |
+
+      The milestone 4 blob circuit (556 steps, depth-uniform flow): 6.7e-16 on z-star and 4.9e-6 on a static
+      grid, against 6.8e-2 on both with the correction off. Asserted below 1e-12 on z-star for two levels
+      with WENO and diffusion, three levels and `EarthSystemModel` levels; on a static grid only the volume.
+    - Check B, a uniform tracer under the sheared flow: within 2.1e-13 of 35 on both levels on z-star and
+      1.4e-14 on a static grid (asserted below 1e-11 in every case above).
+    - The first reviewer's sweep, all at round-off on z-star: refinements 2, 3 and 5, widths 0 to 3,
+      third-order upwind. Dropping the correction on one side, or flipping its sign, gives a volume error
+      of 3e-4 to 4e-3, so the assertions would catch either.
+  - **The wave difference of milestone 2 got worse and its assertion no longer holds.** Child block mean
+    against parent over the whole nest: 6.06 % (static) and 6.07 % (z-star) of the largest sea level, against
+    4.93 % with the correction off; the bound is 5 %. All of it is the sea level correction (tracer
+    correction alone: 4.93 %) and it sits in the cell that takes the correction, the innermost rim cell;
+    with widths 1, 2, 3 it is 6.59, 6.06, 5.88 % against 5.27, 4.93, 4.75 %. That cell now holds the volume
+    conservation requires, which is not the parent's own solution. The assertion in
+    `test/test_two_level_nest.jl` is marked `@test_broken`, not loosened: to decide at review whether the
+    bound is restated for the cells that take no correction, or the 1.1 points are to be reduced.
+  - The `@test_broken` on the z-star child's salinity is now a `@test`, since it passes with the fix.
+  - Bathymetry that differs between parent and child (first reviewer's cases, rerun after the fix below):
+    - Found by the reviewer and fixed: where a parent column beside the edge has fewer wet layers than the
+      child's faces, the first version averaged the tracer with the masked value of the land layer and put
+      salinity off by 3.6 to 7.2 of 35. With land layers passing volume and content upward: 1.4e-14 on a
+      static grid, composite tracer 4.4e-16 and volume 1.7e-15 on z-star.
+    - Bottoms reconciled as in 3.4 (blend, restrict, minimum depth 10 m): composite tracer 2.2e-16 and
+      volume 2.1e-15 on z-star with partial cells.
+    - **Not the correction, but measured here for the first time:** on z-star, where the parent is shallower
+      than the child at the child's open side, a uniform tracer does not stay uniform **in the child**. With
+      a parent shelf of 50 m beside a 100 m child: 4.7e-3 of 35 after one step, in the child's first column
+      inside its west side, in the layers where the parent is land; 421 of 2304 child cells are off by more
+      than 1e-9 after 20 steps, and the parent stays within 2e-11. It is the same with feedback off
+      (`width` larger than the nest) and 25 times smaller without the sponge (1.8e-4). So it belongs to the
+      one-way boundary and sponge over parent land, not to the restriction or the correction; the cause is
+      not found. Reconciled partial cells that are wet everywhere (22 to 98 m) keep salinity within
+      1.3e-13; the first reviewer's reconciled case, which reaches the minimum depth, gave 1.5e-2. A static
+      grid keeps it to 1.4e-14 in every case. This matters for the Pembrokeshire grids.
+    - Not conserved, and not fixed: a parent column beside the edge that is land, or about 1 m deep, under
+      a 100 m child loses the volume the child sends it (error 4 to 7 times the bump's volume); the sea
+      level of a land column is left alone. A nest whose grid is shallower than the parent's ocean at the
+      edge (`depth = 50` of 100) is not conserved either (volume error 0.4 to 0.5 with or without the
+      correction). Reconciled bottoms and a nest grid cut below its deepest column avoid both.
+  - Known and not fixed:
+    - Building a second nest on the same `EarthSystemModel` leaves the first nest's callback on its ocean.
+    - The mismatch fields are full three-dimensional parent fields, one per tracer and one for volume,
+      holding one ring of cells; the correction is launched over every column of the region.
+    - A level must use a split Runge-Kutta stepper (the callback reads `timestepper.Nstages`).
+    - Momentum is not corrected.
+    - Not run: GPU, `Float32`, the real grids.
 
 ## 7. Risks
 

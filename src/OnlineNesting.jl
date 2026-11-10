@@ -5,19 +5,23 @@ export nested_grid, parent_indices,
        TwoWayNestedModel,
        EMODnet2024, refer_to_mean_sea_level!, blend_parent_bottom!, restrict_bottom!
 
-using Oceananigans: AbstractModel, prognostic_fields
+using Oceananigans: AbstractModel, TracerTendencyCallsite, fields, prognostic_fields
 using Oceananigans.AbstractOperations: KernelFunctionOperation
+using Oceananigans.Advection: Centered
 using Oceananigans.Architectures: architecture, on_architecture
 using Oceananigans.BoundaryConditions: FieldBoundaryConditions, GravityWaveRadiationBoundaryCondition,
                                        LeftBoundary, NormalFlowBoundaryCondition, RightBoundary,
                                        TracerReservoir, ValueBoundaryCondition, fill_halo_regions!,
                                        regularize_boundary_condition
-using Oceananigans.Fields: Field, compute!, instantiated_location, interior, location, set!
+using Oceananigans.Fields: CenterField, Field, OneField, compute!, instantiated_location, interior, location, set!
 using Oceananigans.Grids: Bounded, Center, Face, LatitudeLongitudeGrid, MutableVerticalDiscretization, Open,
                           cpu_face_constructor_r, cpu_face_constructor_x, cpu_face_constructor_y,
                           halo_size, inactive_cell, inactive_node, reconstruction_faces, x_domain, y_domain
+using Oceananigans.Models.HydrostaticFreeSurfaceModels: tracer_advecting_velocities
+using Oceananigans.MultiRegion: tracer_flux_x, tracer_flux_y
 using Oceananigans.Operators: Axᶠᶜᶜ, Ayᶜᶠᶜ, Azᶜᶜᶠ, Vᶜᶜᶜ
 using Oceananigans.OutputReaders: FieldTimeSeries
+using Oceananigans.Simulations: Callback, add_callback!
 using Oceananigans.TimeSteppers: TimeSteppers, reconcile_state!, time_step!, update_state!
 using Oceananigans.Utils: KernelParameters, launch!
 
