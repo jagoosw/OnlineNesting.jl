@@ -590,6 +590,9 @@ sequential enough that orchestration would cost more than it saves.
     1.02 m s⁻¹ (bay), rms differences 0.30 and 0.36 m s⁻¹: the sound is narrower than a shelf
     cell and about one approaches cell wide, so the levels are not expected to agree there.
   - Not run on a GPU; the script takes `arch`, edited in after this run and not rerun.
+  - For session C to pick up first, from the items above: a nest as the child without
+    `refinement` passed (`ocean_model`), an `EarthSystemModel` as a level, `Simulation`
+    callbacks, and the clocks when `Δt / refinement` is not representable. The land fill is done.
 
 ## 7. Risks
 
