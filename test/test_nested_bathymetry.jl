@@ -91,7 +91,7 @@ end
         expected = heights(bottom_height_field(parent_grid, expected))
         referred = heights(bottom_height)
 
-        deep, land = expected .< -minimum_depth, expected .> -minimum_depth / 2
+        deep, land = expected .< -minimum_depth, expected .≥ 0
         @test any(deep) && any(land) && any(.!deep .& .!land)
         @test referred[deep] ≈ expected[deep]
         @test all(referred[land] .== 0)

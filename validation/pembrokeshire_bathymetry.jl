@@ -1,42 +1,72 @@
-# EMODnet bathymetry on the shelf, approaches and bay grids, reconciled
-# between levels. Reports how well the column volumes of each parent and nest agree, and whether
+# EMODnet bathymetry on the shelf, approaches, bay and headland grids, reconciled
+# between levels. Draws each level's depth with the outline of its nest, reports how well the column volumes of each parent and nest agree, and whether
 # a stratified ocean stays at rest over each level's bottom, each level run alone with closed sides.
 
 using Oceananigans
 using Oceananigans.Units
-using Oceananigans.Grids: rnodes, static_column_depthᶜᶜᵃ, x_domain, y_domain
+using Oceananigans.Grids: rnodes, static_column_depthᶜᶜᵃ, x_domain, y_domain, λnodes, φnodes
 using Oceananigans.Operators: Azᶜᶜᶜ
 using NumericalEarth
 using NumericalEarth.DataWrangling: BoundingBox, Metadatum
 using OnlineNesting
+using CairoMakie
 using Printf
 
 refinement = 5
 width = 3 # parent cells
 minimum_depth = 10
-lowest_tide = 0 # m relative to mean sea level; EMODnet heights are from the lowest astronomical tide
 z = vcat(-reverse(cumsum(0.5 .* 1.076 .^ (0:49))), 0) # 50 layers, 0.5 m thick at the surface, down to 250 m
 
 shelf_grid = LatitudeLongitudeGrid(size=(220, 245, 50), longitude=(-10.5, -2.5), latitude=(49, 54.5), halo=(7, 7, 4); z)
 approaches_grid = nested_grid(shelf_grid; longitude=(-6.4, -4.6), latitude=(51.3, 52.4), depth=150, refinement)
 bay_grid = nested_grid(approaches_grid; longitude=(-5.50, -5.06), latitude=(51.68, 51.94), depth=95, refinement)
+headland_grid = nested_grid(bay_grid; longitude=(-5.342, -5.244), latitude=(51.850, 51.912), depth=72, refinement)
 
 function emodnet_bottom_height(grid; interpolation_passes, major_basins=Inf)
-    metadatum = Metadatum(:bottom_height; dataset=EMODnet2024(), region=BoundingBox(grid))
-    bottom_height = regrid_bathymetry(grid, metadatum; interpolation_passes, major_basins)
-    return refer_to_mean_sea_level!(bottom_height, lowest_tide; minimum_depth)
+    metadatum = Metadatum(:bottom_height; dataset=EMODnet2024(), region=BoundingBox(grid), dir=joinpath(dirname(@__DIR__), "data"))
+    return regrid_bathymetry(grid, metadatum; minimum_depth, interpolation_passes, major_basins)
 end
 
 shelf_bottom = emodnet_bottom_height(shelf_grid; interpolation_passes=4, major_basins=1)
 approaches_bottom = emodnet_bottom_height(approaches_grid; interpolation_passes=2)
 bay_bottom = emodnet_bottom_height(bay_grid; interpolation_passes=1)
+headland_bottom = emodnet_bottom_height(headland_grid; interpolation_passes=1)
 
 blend_parent_bottom!(approaches_bottom, shelf_bottom; width, minimum_depth)
 blend_parent_bottom!(bay_bottom, approaches_bottom; width, minimum_depth)
+blend_parent_bottom!(headland_bottom, bay_bottom; width, minimum_depth)
+restrict_bottom!(bay_bottom, headland_bottom; width, minimum_depth)
 restrict_bottom!(approaches_bottom, bay_bottom; width, minimum_depth)
 restrict_bottom!(shelf_bottom, approaches_bottom; width, minimum_depth)
 
-levels = (shelf = (shelf_grid, shelf_bottom), approaches = (approaches_grid, approaches_bottom), bay = (bay_grid, bay_bottom))
+levels = (shelf = (shelf_grid, shelf_bottom), approaches = (approaches_grid, approaches_bottom),
+          bay = (bay_grid, bay_bottom), headland = (headland_grid, headland_bottom))
+
+#####
+##### Figure
+#####
+
+figure = Figure(size=(1700, 560))
+
+for (n, name) in enumerate(keys(levels))
+    grid, bottom = levels[name]
+    λ, φ = λnodes(grid, Center()), φnodes(grid, Center())
+    depth = -Array(interior(bottom, :, :, 1))
+    depth[depth .≤ 0] .= NaN
+
+    aspect = AxisAspect((λ[end] - λ[1]) * cosd((φ[1] + φ[end]) / 2) / (φ[end] - φ[1]))
+    title = @sprintf("%s, %d × %d × %d", name, size(grid)...)
+    axis = Axis(figure[1, n]; title, aspect, xlabel="longitude (°E)", ylabel = n == 1 ? "latitude (°N)" : "")
+    depth_map = heatmap!(axis, λ, φ, depth; colormap=:deep, nan_color=:gray80)
+    Colorbar(figure[2, n], depth_map; vertical=false, flipaxis=false, label="depth (m)")
+
+    if n < length(levels)
+        (west, east), (south, north) = x_domain(levels[n+1][1]), y_domain(levels[n+1][1])
+        lines!(axis, [west, east, east, west, west], [south, south, north, north, south]; color=:red)
+    end
+end
+
+save(joinpath(@__DIR__, "pembrokeshire_bathymetry.png"), figure)
 
 #####
 ##### Column volumes
@@ -52,7 +82,7 @@ immersed_boundaries = (("partial cells", PartialCellBottom),
                        ("partial cells of any thickness", bottom -> PartialCellBottom(bottom; minimum_fractional_cell_height=0)),
                        ("full cells", GridFittedBottom))
 
-for (name, immersed_boundary) in immersed_boundaries, (parent, nest) in ((:shelf, :approaches), (:approaches, :bay))
+for (name, immersed_boundary) in immersed_boundaries, (parent, nest) in ((:shelf, :approaches), (:approaches, :bay), (:bay, :headland))
     (parent_grid, parent_bottom), (grid, bottom) = levels[parent], levels[nest]
     i, j, _ = parent_indices(parent_grid, grid)
     inner = (1+width:length(i)-width, 1+width:length(j)-width)

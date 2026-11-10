@@ -12,15 +12,15 @@ $(TYPEDSIGNATURES)
 Refer `bottom_height` [m], measured from the lowest astronomical tide, to mean sea level by
 adding `lowest_tide`, the height [m] of the lowest astronomical tide relative to mean sea level
 (negative): a number, a function of longitude and latitude, or a field, which is interpolated to
-the grid of `bottom_height`. Land is set to zero height; columns left shallower than half of
-`minimum_depth` [m] become land and the other wet columns are at least `minimum_depth` deep.
+the grid of `bottom_height`. Land is set to zero height and every column below mean sea level
+is at least `minimum_depth` [m] deep.
 """
 function refer_to_mean_sea_level!(bottom_height, lowest_tide; minimum_depth = 0)
     datum_height = Field{Center, Center, Nothing}(bottom_height.grid)
     set!(datum_height, lowest_tide)
 
     height = Array(interior(bottom_height, :, :, 1)) .+ Array(interior(datum_height, :, :, 1))
-    set!(bottom_height, limit_depth.(height, minimum_depth))
+    set!(bottom_height, min.(height, ifelse.(height .< 0, -minimum_depth, 0)))
     fill_halo_regions!(bottom_height)
 
     return bottom_height

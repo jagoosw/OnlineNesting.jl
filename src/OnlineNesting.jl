@@ -15,21 +15,21 @@ using Oceananigans.BoundaryConditions: FieldBoundaryConditions, GravityWaveRadia
 using Oceananigans.Fields: Field, compute!, instantiated_location, interior, location, set!
 using Oceananigans.Grids: Bounded, Center, Face, LatitudeLongitudeGrid, MutableVerticalDiscretization, Open,
                           cpu_face_constructor_r, cpu_face_constructor_x, cpu_face_constructor_y,
-                          halo_size, inactive_cell, inactive_node, reconstruction_faces, x_domain, y_domain
+                          halo_size, inactive_cell, inactive_node, reconstruction_faces, x_domain, y_domain, λnodes, φnodes
 using Oceananigans.Operators: Axᶠᶜᶜ, Ayᶜᶠᶜ, Azᶜᶜᶠ, Vᶜᶜᶜ
 using Oceananigans.OutputReaders: FieldTimeSeries
 using Oceananigans.TimeSteppers: TimeSteppers, reconcile_state!, time_step!, update_state!
 using Oceananigans.Utils: KernelParameters, launch!
 
 using NumericalEarth.DataWrangling: DataWrangling, AbstractStaticBathymetry, Metadatum, bounding_box_suffix,
-                                    download_cache, download_with_retries, metadata_path, native_grid
+                                    download_cache, download_with_retries, metadata_path, native_grid, unzip
 using NumericalEarth.EarthSystemModels: EarthSystemModel
 using NumericalEarth.NestedModels: Interpolated, blend_parent_terrain!, parent_boundary_conditions, parent_forcings
 
 using DocStringExtensions: TYPEDSIGNATURES
 using Downloads: Downloads
 using KernelAbstractions: @index, @kernel
-using NCDatasets: NCDataset
+using NCDatasets: NCDataset, defVar
 
 include("nested_grid.jl")
 include("state_exchanger.jl")
