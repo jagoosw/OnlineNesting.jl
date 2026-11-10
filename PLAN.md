@@ -374,12 +374,19 @@ sequential enough that orchestration would cost more than it saves.
     `parent_indices(parent_grid, nest_grid)` in `src/nested_grid.jl`. Departure from 3.4:
     `nested_grid` returns only the grid, and the parent index ranges come from
     `parent_indices`, which derives them from the two grids.
-  - Check passed, 56 of 56 assertions in `test/test_nested_grid.jl`: for regular, stretched,
-    z-star and immersed parents at refinements 2 and 5, every `refinement`-th nest face matches
-    a parent face (`≈`), the vertical faces are identical, and the nest cell areas inside each
-    parent cell sum to its area (`≈`).
-  - Not covered: GPU, and a nest whose requested box reaches the parent's edge (the extents
-    snap to the nearest parent face with no check that a margin remains for the exchanger).
+  - Check passed, 130 of 130 assertions in `test/test_nested_grid.jl`: for regular, stretched,
+    z-star, immersed and Float32 parents at refinements 2 and 5, the nest spans the parent
+    faces nearest the requested extents, splits each covered parent cell into `refinement`
+    equal cells (`≈`), has the parent's vertical faces exactly, and carries over the halo,
+    float type, radius and kind of vertical coordinate.
+  - Departure from the milestone 1 check: the area-sum assertion was dropped. On a
+    latitude-longitude grid cell area is additive, so it follows from the face check.
+  - Independent review found that the first version read faces through `λnodes`, which omits
+    the seam face of a periodic parent and cut a nest ending at the seam one column short.
+    Faces now come from Oceananigans' `cpu_face_constructor_*` and `reconstruction_faces`.
+  - Not covered: GPU; the docstring example is not run by any test or docs build; a nest
+    crossing a periodic parent's seam is truncated at the seam; a requested box reaching the
+    parent's edge snaps to it with no check that a margin remains for the exchanger.
 
 ## 7. Risks
 
