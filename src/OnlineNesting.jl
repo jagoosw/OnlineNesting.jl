@@ -2,26 +2,34 @@ module OnlineNesting
 
 export nested_grid, parent_indices,
        StateExchanger, nested_boundary_conditions, nested_forcings,
-       TwoWayNestedModel
+       TwoWayNestedModel,
+       EMODnet2024, refer_to_mean_sea_level!, blend_parent_bottom!, restrict_bottom!
 
 using Oceananigans: AbstractModel, prognostic_fields
 using Oceananigans.Architectures: architecture
 using Oceananigans.BoundaryConditions: FieldBoundaryConditions, GravityWaveRadiationBoundaryCondition,
                                        LeftBoundary, NormalFlowBoundaryCondition, RightBoundary,
-                                       TracerReservoir, ValueBoundaryCondition, regularize_boundary_condition
-using Oceananigans.Fields: Field, instantiated_location
+                                       TracerReservoir, ValueBoundaryCondition, fill_halo_regions!,
+                                       regularize_boundary_condition
+using Oceananigans.Fields: Field, instantiated_location, interior, set!
 using Oceananigans.Grids: Bounded, Center, Face, LatitudeLongitudeGrid, MutableVerticalDiscretization, Open,
                           cpu_face_constructor_r, cpu_face_constructor_x, cpu_face_constructor_y,
-                          halo_size, reconstruction_faces
+                          halo_size, reconstruction_faces, x_domain, y_domain
 using Oceananigans.OutputReaders: FieldTimeSeries
 using Oceananigans.TimeSteppers: TimeSteppers, time_step!, update_state!
 
-using NumericalEarth.NestedModels: Interpolated, parent_boundary_conditions, parent_forcings
+using NumericalEarth.DataWrangling: DataWrangling, AbstractStaticBathymetry, Metadatum, bounding_box_suffix,
+                                    download_cache, download_with_retries, metadata_path, native_grid
+using NumericalEarth.NestedModels: Interpolated, blend_parent_terrain!, parent_boundary_conditions, parent_forcings
 
 using DocStringExtensions: TYPEDSIGNATURES
+using Downloads: Downloads
+using NCDatasets: NCDataset
 
 include("nested_grid.jl")
 include("state_exchanger.jl")
 include("two_way_nested_model.jl")
+include("nested_bathymetry.jl")
+include("emodnet.jl")
 
 end # module OnlineNesting
