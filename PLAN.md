@@ -998,6 +998,27 @@ sequential enough that orchestration would cost more than it saves.
     section 5 is split into tidal Flather on U/V and GLORYS NormalFlow on u/v (the GLORYS
     contribution to barotropic transport is small on this shelf-tide-dominated domain).
 
+- 2026-11-10, session H (Severn Estuary validation setup):
+  - **`lowest_astronomical_tide(TPXO10Atlas, grid)`** in `src/tpxo.jl`: computes LAT ≈ -Σ|Aᵢ|
+    from the TPXO10 elevation amplitudes (10 constituents by default). Returns a `Field` on the
+    atlas window grid (0–360° longitude); the caller wraps with `mod(λ, 360)` before passing to
+    `refer_to_mean_sea_level!`, which handles interpolation via `set!`.
+  - **`validation/severn_estuary.jl`:** two-level nest (Bristol Channel shelf 140 × 90 × 50,
+    Severn Estuary 400 × 200 × 30) with TPXO10 + GLORYS + ERA5 forcing, matching the
+    Pembrokeshire template. Changes from the initial draft:
+    - EMODnet bathymetry referenced to MSL via `lowest_astronomical_tide` instead of the
+      placeholder `refer_to_mean_sea_level!(bottom_height, 0; ...)`.
+    - GloFAS river routing on the estuary grid, gated behind `GLOFAS_DIR` env var. When enabled,
+      `GloFASPrescribedLand` provides freshwater flux through NumericalEarth's `PrescribedLand`
+      and `river_mouth_vertical_diffusivity` mixing closure via `ocean_simulation(; river_routing)`.
+      All four rivers (Severn, Wye, Usk, Avon) enter through the interior since the domain extends
+      east of Gloucester.
+  - **`validation/severn_bathymetry.jl`:** also updated with the LAT correction.
+  - Checks: syntax-checks pass; not run (requires TPXO atlas, GLORYS credentials, and optionally
+    GloFAS data).
+  - Departures: `GloFASPrescribedLand` import is assumed exported from `NumericalEarth` (like
+    `ERA5PrescribedAtmosphere`); verify on first run.
+
 ## 7. Risks
 
 - **Open-boundary consistency with several layers.** The barotropic and baroclinic normal
