@@ -21,7 +21,7 @@ function nested_levels(; refinement, parent_bottom = -100)
     child = ocean(grid; boundary_conditions = nested_boundary_conditions(exchanger, grid),
                         forcing = nested_forcings(exchanger, grid; rate=1/1hour, width=4))
 
-    return parent, child, exchanger
+    return parent, child, TwoWayNestedModel(parent, child, exchanger; width=2)
 end
 
 stratification(λ, φ, z) = 10 + z / 20
@@ -30,11 +30,11 @@ stratification(λ, φ, z) = 10 + z / 20
 coast(λ, φ) = ifelse(λ < 3, 0, ifelse(φ < 43.5, -50, -100))
 
 @testset "A stratified ocean at rest stays at rest, parent bottom $parent_bottom" for parent_bottom in (-100, coast)
-    parent, child, exchanger = nested_levels(; refinement=3, parent_bottom)
+    parent, child, nest = nested_levels(; refinement=3, parent_bottom)
     set!(parent, T=stratification, S=35)
     set!(child, T=stratification, S=35)
 
-    simulation = Simulation(TwoWayNestedModel(parent, child, exchanger); Δt=5minutes, stop_iteration=24, verbose=false)
+    simulation = Simulation(nest; Δt=5minutes, stop_iteration=24, verbose=false)
     run!(simulation)
 
     @test child.clock.time == parent.clock.time == 2hours
@@ -51,12 +51,11 @@ coast(λ, φ) = ifelse(λ < 3, 0, ifelse(φ < 43.5, -50, -100))
 end
 
 @testset "A gravity wave crosses the nest" begin
-    parent, child, exchanger = nested_levels(refinement=3)
+    parent, child, nest = nested_levels(refinement=3)
     bump(λ, φ, z) = 0.1 * exp(-((λ - 2)^2 + (φ - 45)^2) / 2)
     set!(parent, T=stratification, S=35, η=bump)
     set!(child, T=stratification, S=35, η=bump)
 
-    nest = TwoWayNestedModel(parent, child, exchanger)
     i, j, _ = parent_indices(parent.grid, child.grid)
     block = (nest.refinement, length(i), nest.refinement, length(j))
     amplitude, difference = 0.0, 0.0

@@ -40,14 +40,14 @@ end
 $(TYPEDSIGNATURES)
 
 Return an exchanger whose `state` holds a two-level `FieldTimeSeries` on the parent grid for
-each prognostic field of the ocean model `parent`: `u`, `v`, `η`, the barotropic transports
+each prognostic field of the ocean model of `parent`: `u`, `v`, `η`, the barotropic transports
 `U` and `V`, and the tracers. The levels are the parent state at the start and at the end of
 its latest time step, for a nest to interpolate between. Land nodes hold the value of the
 nearest sea node on their level.
 """
 function StateExchanger(parent)
     time = parent.clock.time
-    parent_fields = prognostic_fields(parent)
+    parent_fields = prognostic_fields(ocean_model(parent))
 
     state = map(parent_fields) do field
         FieldTimeSeries(series_location(field), field.grid, range(time, time + 1; length=2))

@@ -7,7 +7,7 @@ barotropic transport and sea level) to the parent. The outermost level is any Nu
 case is three levels: NW European shelf → Pembrokeshire approaches → St Brides Bay.
 
 Versions this plan was checked against: Oceananigans 0.117.2, NumericalEarth 0.9.2, Julia 1.12.
-Milestones 0–2 have been run (status log, section 6); the checks of later milestones are still to be done.
+Milestones 0–4 and 6 have been run (status log, section 6); the checks of later milestones are still to be done.
 
 ## 1. Decisions
 
@@ -593,6 +593,91 @@ sequential enough that orchestration would cost more than it saves.
   - For session C to pick up first, from the items above: a nest as the child without
     `refinement` passed (`ocean_model`), an `EarthSystemModel` as a level, `Simulation`
     callbacks, and the clocks when `Δt / refinement` is not representable. The land fill is done.
+- 2026-11-10, session C (milestones 3 and 4), on branch `session-c` in `.claude/worktrees/session-c`,
+  because another session was editing the main working tree (`src/OnlineNesting.jl`,
+  `src/emodnet.jl`, `validation/pembrokeshire_tide.jl`). One commit covers both milestones.
+  - Built, all in `src/two_way_nested_model.jl`:
+    - `ocean_model(level)`: the level itself, the ocean of an `EarthSystemModel`, or the parent
+      of a nest. `StateExchanger` and the nest read grids and fields through it, so a level can
+      be any of the three. No `outer_level`: `ocean_model` of a nest is already its parent's.
+    - Tracer feedback: after the child's steps, and once before the first step, a kernel
+      replaces each parent tracer by `Σ cᶜ Vᶜ / Σ Vᶜ` over the wet child cells in each parent
+      cell of the feedback region, then the parent's state is updated. The parent keeps its
+      value where the child is all land. Every tracer of the parent must exist on the child.
+    - The child's last step is the time left to the parent's time, not `Δt / refinement`.
+    - `Simulation` callbacks are passed to the parent's `time_step!` and `update_state!`.
+  - **User-facing changes.** `TwoWayNestedModel(parent, child, exchanger; width)`: `width` is
+    required and is the rim, in parent cells, that takes no feedback; it has to be the `width`
+    given to `restrict_bottom!`. Departure from 3.5, which made the sponge width the default:
+    the nest does not know the sponge, whose `width` counts child cells. The `refinement`
+    keyword is gone: space and time refinement both come from the grids. A `width` of half the
+    nest or more leaves no feedback region, which is the only way to turn feedback off.
+  - New dependency: `KernelAbstractions`, for `@kernel`.
+  - The ConservativeRegridding question of 3.5, settled by reading, not by running:
+    Oceananigans' extension builds its regridder on `underlying_grid` of both grids, so it has
+    horizontal area weights only, no wet-cell mask and no cell volumes. A kernel was written.
+  - Checks, 218 of 218 assertions pass (193 before). All on flat 100 m bottoms with four
+    layers, refinement 3, split Runge-Kutta 3, sponge 4 child cells at 1/hour, `width = 2`.
+    - Milestone 3, `test/test_recursion.jl`: 40 × 40 shelf over 10° × 10°, approaches over the
+      central 4° (48 × 48), bay over the central 2° (72 × 72), composed as
+      `TwoWayNestedModel(shelf, TwoWayNestedModel(approaches, bay, e₂; width), e₁; width)`.
+      - Clocks: equal (`==`) on the three levels after each of 80 steps of 5 minutes, and after
+        each of 20 steps of 0.1 s, where repeated `Δt / 3` steps disagree with the parent on
+        14 of 20 steps. The bay takes 9 steps per shelf step.
+      - Check B at the innermost level, the milestone 2 wave: the largest difference between
+        the bay's block-averaged `η` and the approaches' is 1.8 % of the largest `η` there
+        (0.00058 of 0.033 m; asserted below 5 %). As in milestone 2, reflection is not
+        measured separately.
+      - Two `EarthSystemModel` levels (`OceanOnlyModel(ocean_simulation(...))`, no closure or
+        Coriolis) under `Simulation`: at rest after 6 steps, with the four clocks equal.
+      - Initialization runs finest first: a tracer set to 1 only in the bay gives 1 on the
+        approaches and on the shelf after `update_state!(nest)`.
+    - Milestone 4, `test/test_tracer_feedback.jl`, and the same three-level wave run:
+      - Check A: a tracer equal to 1 differs from 1 by less than 1e-12 on all three levels
+        after the wave run.
+      - Check C: a nest 50 m deep in a 100 m parent, with land filling some parent cells, parts
+        of others and the bottom layer of others. The parent equals a mean computed in the
+        test from the grid faces (`≈`), keeps its value where the nest is all land, and is
+        untouched outside the feedback region. During the blob run the parent stays within
+        1.0e-14 of the restricted child in the feedback region after every step.
+      - Check B: a periodic channel 6° × 4° (24 × 16), nest over the central 2° × 2°, a blob
+        of standard deviation 0.3° in solid-body rotation at 4 m s⁻¹, one circuit in 556 steps
+        of 5 minutes. The blob leaves the nest (largest value in the nest falls to 0.02) and
+        returns (0.52 in the nest, 0.53 on the parent). Tracer content relative to the start,
+        largest departure over the circuit and value at its end:
+
+        | | parent, largest | composite, largest | composite, end |
+        |---|---|---|---|
+        | feedback on | 8.2 % | 10.9 % | −2.3 % |
+        | feedback off | 5e-6 | 11.3 % | −2.1 % |
+
+        Composite is the parent outside the nest plus the whole child. It moves by a tenth
+        with or without feedback, as the blob crosses the nest's sides on two grids that carry
+        it differently; this is what flux correction (milestone 7) is for. These numbers are
+        from a run outside the tests, which assert only that the blob leaves and returns and
+        check C.
+    - The milestone 2 tests now run with tracer feedback (file renamed
+      `test/test_two_level_nest.jl`); the wave difference is unchanged at 3.6 %.
+  - Independent review found, and the commit fixes: `update_state!` of an `EarthSystemModel`
+    recomputes fluxes but does not update its ocean, so a fed-back parent kept its old halos
+    and pressure (0.13 in `pHY′` in the reviewer's run; now both are updated, with a test);
+    the test of an all-land parent cell had no such cell inside the feedback region.
+  - Known and not fixed:
+    - The exact last step changes `Δt` by round-off when `Δt / refinement` is not
+      representable, which makes a quasi-Adams-Bashforth child take two Euler steps per parent
+      step (reviewer's reading and run). D6 already requires split Runge-Kutta.
+    - Callbacks reach only the parent, never the child, and update-state callbacks run once
+      more per step than on the parent alone, in the update after feedback. No test attaches one.
+    - The restriction at initialization runs twice under `Simulation` and again at an inner
+      nest's first step. It gives the same result each time.
+    - The kernel writes into a parent land cell that the child has as sea.
+    - Not run: GPU, z-star, a nest with feedback on the real partial-cell grids (the reviewer
+      ran one partial-cell case, which matched to 1.1e-13), and `validation/pembrokeshire_tide.jl`
+      after its edit to pass `width`. That script now feeds temperature back.
+  - `validation/idealized_nests.jl` records two videos of three idealized levels: the blob in
+    a 12° channel (`idealized_blob.mp4`) and the wave (`idealized_wave.mp4`). Not tracked.
+  - Merging: `src/OnlineNesting.jl` and `validation/pembrokeshire_tide.jl` are also changed,
+    uncommitted, in the main working tree.
 
 ## 7. Risks
 

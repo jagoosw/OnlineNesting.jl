@@ -1,5 +1,5 @@
-# An M2 tide on the shelf, approaches and bay grids, nested one way: each nest takes its
-# boundary state from its parent and nothing is fed back. The tide is a uniform sea-level
+# An M2 tide on the shelf, approaches and bay grids: each nest takes its boundary state from
+# its parent and returns its temperature. The tide is a uniform sea-level
 # oscillation on the four open sides of the shelf, not a tidal atlas. The grids are twice as
 # coarse as the target case (5 km, 1 km and 200 m) with four layers, to run in minutes.
 #
@@ -127,8 +127,8 @@ function nested_levels(; amplitude)
     approaches, approaches_exchanger = nested_ocean(shelf, approaches_grid)
     bay, bay_exchanger = nested_ocean(approaches, bay_grid)
 
-    inner_nest = TwoWayNestedModel(approaches, bay, bay_exchanger; refinement)
-    return TwoWayNestedModel(shelf, inner_nest, approaches_exchanger; refinement), (; shelf, approaches, bay)
+    inner_nest = TwoWayNestedModel(approaches, bay, bay_exchanger; width)
+    return TwoWayNestedModel(shelf, inner_nest, approaches_exchanger; width), (; shelf, approaches, bay)
 end
 
 #####
