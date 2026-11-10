@@ -25,7 +25,7 @@ end
 stratification(λ, φ, z) = 10 + z / 20
 surface(model) = Array(interior(model.free_surface.displacement))[:, :, 1]
 
-@testset "The parent takes the nest's transports and wet-mean sea level, $bottom_type" for bottom_type in (GridFittedBottom, PartialCellBottom)
+@testset "The parent takes the nest's velocity and wet-mean sea level, $bottom_type" for bottom_type in (GridFittedBottom, PartialCellBottom)
     refinement, width = 3, 2
     parent_grid = LatitudeLongitudeGrid(size=(20, 20, 4), longitude=(0, 10), latitude=(40, 50), z=(-100, 0))
     underlying_grid = nested_grid(parent_grid; longitude=(3, 7), latitude=(43, 47), depth=50, refinement)
@@ -44,18 +44,26 @@ surface(model) = Array(interior(model.free_surface.displacement))[:, :, 1]
     Nx, Ny, Nz = length(i), length(j), length(k)
     inner = (1+width:Nx-width, 1+width:Ny-width)
 
-    x_transport(model) = Array(interior(Field(model.velocities.u * Ax)))
-    y_transport(model) = Array(interior(Field(model.velocities.v * Ay)))
+    # the nest's transport through each parent face, over the area of the nest's faces there
+    function restricted(velocity, area, on_face, dims)
+        transport = Array(interior(Field(velocity * area)))[on_face..., :]
+        face_area = Array(interior(Field(velocity * 0 + area)))[on_face..., :]
+        block = dims == 2 ? (Nx + 1, refinement, Ny, Nz) : (refinement, Nx, Ny + 1, Nz)
+        return dropdims(sum(reshape(transport, block); dims) ./ sum(reshape(face_area, block); dims); dims)
+    end
 
-    nest_transport = sum(reshape(x_transport(child)[1:refinement:end, :, :], Nx + 1, refinement, Ny, Nz), dims=2)[:, 1, :, :]
-    parent_transport = x_transport(parent)[first(i):last(i)+1, j, k]
-    @test parent_transport[1+width:Nx-width+1, inner[2], :] ≈ nest_transport[1+width:Nx-width+1, inner[2], :]
-    @test all(parent_transport[[1:width; Nx-width+2:Nx+1], :, :] .== 0)
+    faces = 1+width:Nx-width+1
+    nest_u = restricted(child.velocities.u, Ax, (1:refinement:size(grid, 1)+1, :), 2)
+    parent_u = Array(interior(parent.velocities.u))[first(i):last(i)+1, j, k]
+    @test maximum(abs, nest_u) > 0.1
+    @test parent_u[faces, inner[2], :] ≈ nest_u[faces, inner[2], :]
+    @test all(parent_u[[1:width; Nx-width+2:Nx+1], :, :] .== 0)
 
-    nest_transport = sum(reshape(y_transport(child)[:, 1:refinement:end, :], refinement, Nx, Ny + 1, Nz), dims=1)[1, :, :, :]
-    parent_transport = y_transport(parent)[i, first(j):last(j)+1, k]
-    @test parent_transport[inner[1], 1+width:Ny-width+1, :] ≈ nest_transport[inner[1], 1+width:Ny-width+1, :]
-    @test all(parent_transport[:, [1:width; Ny-width+2:Ny+1], :] .== 0)
+    faces = 1+width:Ny-width+1
+    nest_v = restricted(child.velocities.v, Ay, (:, 1:refinement:size(grid, 2)+1), 1)
+    parent_v = Array(interior(parent.velocities.v))[i, first(j):last(j)+1, k]
+    @test parent_v[inner[1], faces, :] ≈ nest_v[inner[1], faces, :]
+    @test all(parent_v[:, [1:width; Ny-width+2:Ny+1], :] .== 0)
 
     # the barotropic transport follows the velocity it was given
     U = parent.free_surface.barotropic_velocities.U

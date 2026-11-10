@@ -772,6 +772,44 @@ sequential enough that orchestration would cost more than it saves.
   - Nothing was done on the Pembrokeshire case, at the user's instruction.
   - Merging: `src/OnlineNesting.jl` changes two import lines that the main working tree also has
     uncommitted edits to.
+- 2026-11-10, session D continued, after review with the user (z-star must be supported; exact
+  momentum conservation is not required). This supersedes the denominator and the z-star item of
+  the entry above.
+  - The velocity restriction is now 3.5's own formula, `Σ uᶜ Aᶜ / Σ Aᶜ` over all the child faces on
+    the parent face, land faces included with their zero velocity. Tracers, `η`, `u` and `v` go
+    through one kernel, `_restrict!`, a weighted mean that takes the weight (`wet_volume`,
+    `wet_surface_area`, `Axᶠᶜᶜ`, `Ayᶜᶠᶜ`) and the block of child nodes. Source is +35 lines net
+    against the start of the session. Consequences: the parent's velocity never exceeds the
+    child's (the 1 cm test gives 0.1 m s⁻¹); transport through a parent face is the child's
+    only where their face areas agree (flat and grid-fitted bottoms), not with partial cells.
+  - **z-star.** No restriction reads the parent's grid any more, so nothing depends on when the
+    parent's grid is rescaled; `reconcile_state!` rescales it from the fed-back `η`. Checked
+    by running the wave test on z-star grids on both levels (`test/test_two_level_nest.jl`):
+    with feedback the parent's uniform salinity stays within 1e-13 of 35 after 80 steps
+    (asserted below 1e-11), which on z-star does test that transports and sea level agree.
+  - **Upstream defect found, not ours and not fixed:** on a z-star grid a uniform tracer does
+    not stay uniform in the cells beside an open side. In the nest the child's salinity is off
+    by 2.4e-3 of 35 in its boundary columns, the same with feedback off, and 1.1e-2 without the
+    sponge. A bare Oceananigans 0.117.2 model, 20 × 20 × 4 with open west and east sides, a
+    gravity-wave radiation condition toward a 0.1 m exterior level, `NormalFlowBoundaryCondition(0)`
+    on `u` and a `TracerReservoir` of 35, gives 4.7e-3 on z-star after 40 steps and exactly 0 on
+    static `z`. The cause was not traced. The test marks the child's assertion `@test_broken`
+    on z-star. So z-star is supported by the feedback, and the one-way boundary of a z-star
+    child is not tracer-consistent until this is fixed in Oceananigans.
+  - Tests: 247 pass and 1 is marked broken, of 248.
+  - Wave difference again, without Coriolis (the 4.78 % above was a run with Coriolis):
+
+    | | feedback on | feedback off |
+    |---|---|---|
+    | static `z` | 4.92 % | 3.64 % |
+    | z-star | 4.71 % | 3.64 % |
+
+    With feedback the largest difference is at the second parent cell in from the nest's west
+    side: the innermost cell of the rim, between the parent's own solution and the fed-back
+    region. The assertion is 5 %, so the margin is 0.08 points.
+  - `validation/idealized_nests.jl` also records `idealized_eddy.mp4`: three levels with
+    Coriolis, the eddy of check B set in the bay only, 12 hours. All three videos were recorded
+    again with full feedback. Not tracked.
 
 ## 7. Risks
 

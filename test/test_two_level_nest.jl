@@ -11,8 +11,8 @@ function ocean(grid; kwargs...)
                                        kwargs...)
 end
 
-function nested_levels(; refinement, parent_bottom = -100)
-    underlying_grid = LatitudeLongitudeGrid(size=(40, 40, 4), longitude=(0, 10), latitude=(40, 50), z=(-100, 0))
+function nested_levels(; refinement, parent_bottom = -100, z = (-100, 0))
+    underlying_grid = LatitudeLongitudeGrid(size=(40, 40, 4), longitude=(0, 10), latitude=(40, 50); z)
     parent_grid = ImmersedBoundaryGrid(underlying_grid, GridFittedBottom(parent_bottom))
     grid = nested_grid(parent_grid; longitude=(3, 7), latitude=(43, 47), refinement)
 
@@ -50,8 +50,8 @@ coast(λ, φ) = ifelse(λ < 3, 0, ifelse(φ < 43.5, -50, -100))
     @test maximum(abs, T .- T[1:1, 1:1, :]) < 1e-12
 end
 
-@testset "A gravity wave crosses the nest" begin
-    parent, child, nest = nested_levels(refinement=3)
+@testset "A gravity wave crosses the nest, $(summary(z))" for z in ((-100, 0), MutableVerticalDiscretization((-100, 0)))
+    parent, child, nest = nested_levels(; refinement=3, z)
     bump(λ, φ, z) = 0.1 * exp(-((λ - 2)^2 + (φ - 45)^2) / 2)
     set!(parent, T=stratification, S=35, η=bump)
     set!(child, T=stratification, S=35, η=bump)
@@ -70,6 +70,16 @@ end
     end
 
     @test difference < 0.05 * amplitude
+
+    # a uniform tracer stays uniform when the transports agree with the changes of the sea level
+    salinity_error(model) = maximum(abs, Array(interior(model.tracers.S)) .- 35)
+    @test salinity_error(parent) < 1e-11
+
+    if z isa Tuple
+        @test salinity_error(child) < 1e-11
+    else # Oceananigans 0.117.2 does not keep it uniform beside an open side of a z-star grid
+        @test_broken salinity_error(child) < 1e-11
+    end
 
     # the velocity through the open sides carries the barotropic transport
     u, v = child.velocities

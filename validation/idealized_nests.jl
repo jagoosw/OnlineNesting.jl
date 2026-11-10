@@ -1,8 +1,9 @@
 # Videos of two idealized three-level nests, shelf → approaches → bay, each with flat 100 m
 # bottoms and refinement 3:
 # - a tracer blob carried around a periodic channel, through the nests and back into them;
-# - a gravity wave from a sea-level bump in a closed box, crossing the nests.
-# The left panel is the shelf alone, with the tracers fed back from the nests; the right panel
+# - a gravity wave from a sea-level bump in a closed box, crossing the nests;
+# - a geostrophic eddy set in the bay only, one shelf cell in radius.
+# The left panel is the shelf alone, with the state fed back from the nests; the right panel
 # draws each nest over its parent.
 #
 #   julia --project -t auto validation/idealized_nests.jl
@@ -21,20 +22,20 @@ function ocean(grid; kwargs...)
                                        kwargs...)
 end
 
-function nested_ocean(parent, grid)
+function nested_ocean(parent, grid; kwargs...)
     exchanger = StateExchanger(parent)
     child = ocean(grid; boundary_conditions = nested_boundary_conditions(exchanger, grid),
-                        forcing = nested_forcings(exchanger, grid; rate=1/1hour, width=4))
+                        forcing = nested_forcings(exchanger, grid; rate=1/1hour, width=4), kwargs...)
     return child, exchanger
 end
 
-function three_levels(shelf_grid; longitude, latitude)
+function three_levels(shelf_grid; longitude, latitude, kwargs...)
     approaches_grid = nested_grid(shelf_grid; longitude=longitude[1], latitude=latitude[1], refinement=3)
     bay_grid = nested_grid(approaches_grid; longitude=longitude[2], latitude=latitude[2], refinement=3)
 
-    shelf = ocean(shelf_grid)
-    approaches, approaches_exchanger = nested_ocean(shelf, approaches_grid)
-    bay, bay_exchanger = nested_ocean(approaches, bay_grid)
+    shelf = ocean(shelf_grid; kwargs...)
+    approaches, approaches_exchanger = nested_ocean(shelf, approaches_grid; kwargs...)
+    bay, bay_exchanger = nested_ocean(approaches, bay_grid; kwargs...)
 
     inner_nest = TwoWayNestedModel(approaches, bay, bay_exchanger; width=2)
     return TwoWayNestedModel(shelf, inner_nest, approaches_exchanger; width=2), (shelf, approaches, bay)
@@ -111,3 +112,25 @@ foreach(level -> set!(level, T=stratification, S=35, η=bump), levels)
 record_levels(level -> interior(level.free_surface.displacement, :, :, 1), nest, levels,
               joinpath(@__DIR__, "idealized_wave.mp4");
               Δt, steps = 160, title = "sea level (m)", colormap = :balance, colorrange = (-0.03, 0.03))
+
+#####
+##### Eddy
+#####
+
+nest, levels = three_levels(box_grid; longitude=((3, 7), (4, 6)), latitude=((43, 47), (44, 46)),
+                            coriolis = HydrostaticSphericalCoriolis())
+shelf, approaches, bay = levels
+
+radius = 0.25
+g = shelf.free_surface.gravitational_acceleration
+fR(φ) = 2 * shelf.coriolis.rotation_rate * sind(φ) * deg2rad(box_grid.radius)
+η(λ, φ, z=0) = 0.02 * exp(-(((λ - 5) * cosd(45))^2 + (φ - 45)^2) / 2radius^2)
+u(λ, φ, z) =  g / fR(φ) * η(λ, φ) * (φ - 45) / radius^2
+v(λ, φ, z) = -g / fR(φ) * η(λ, φ) * (λ - 5) * cosd(45)^2 / (cosd(φ) * radius^2)
+
+foreach(level -> set!(level, T=stratification, S=35), levels)
+set!(bay; η, u, v)
+
+record_levels(level -> interior(level.free_surface.displacement, :, :, 1), nest, levels,
+              joinpath(@__DIR__, "idealized_eddy.mp4");
+              Δt, steps = 144, title = "sea level (m)", colormap = :balance, colorrange = (-0.02, 0.02))
