@@ -968,6 +968,36 @@ sequential enough that orchestration would cost more than it saves.
     - Momentum is not corrected.
     - Not run: GPU, `Float32`, the real grids.
 
+- 2026-11-10, session G (milestone 8): the Pembrokeshire case with realistic forcing.
+  - **Ported from NE PR 681:** `src/earth_tides.jl` (Earth tidal constituents and `TidalHarmonics`
+    from astronomical constants) and `src/tpxo.jl` (`TPXO10Atlas` struct implementing
+    `Oceananigans.BoundaryConditions.tidal_atlas_constants` — reads the 1/30° atlas files, inpaints
+    land, interpolates harmonic constants at arbitrary boundary nodes). Both are temporary: they
+    move to NumericalEarth once PR 681 is merged.
+  - **`validation/download_pembrokeshire_data.sh`:** downloads GLORYS daily reanalysis (T, S, u, v)
+    for the shelf region via `copernicusmarine subset`, checks that the TPXO atlas files exist, and
+    notes that ERA5 is auto-downloaded by NumericalEarth.
+  - **`validation/pembrokeshire.jl`:** full-resolution three-level case — shelf 220 × 245, approaches
+    250 × 245, bay 305 × 290, 50 z-star layers surface-intensified to 250 m — with:
+    - TPXO10 tidal atlas Flather conditions on the shelf boundary (10 constituents, 6 h ramp).
+    - GLORYS daily reanalysis for `TracerReservoir` on T, S and `NormalFlowBoundaryCondition` on
+      u, v at the shelf boundary, loaded through NumericalEarth's `Metadata`/`FieldTimeSeries`
+      (30-day streaming window).
+    - ERA5 `PrescribedAtmosphere` and `PrescribedRadiation` per level (decision D3), each an
+      `OceanOnlyModel` wrapping `ocean_simulation` with CATKE closure, WENO advection and
+      `SplitRungeKutta3`.
+    - Passive tracer P released at the surface in St Brides Bay.
+    - Time series at St Brides Bay and Ramsey Sound for tidal agreement between levels.
+  - Checks: not run (requires GLORYS credentials and ERA5 data, and a GPU for production speed). The
+    script records sea level and surface speed at the two stations, reports the inter-level rms
+    difference, and prints the passive tracer's max and total on each grid. The feedback-off
+    comparison is obtained by rerunning with `width = 0`.
+  - Departures: ERA5 instead of JRA55 (user's preference for available data on the cluster);
+    initialization from an analytic profile rather than GLORYS fields (the boundary conditions spin
+    up the interior over the first months); the combined tidal + GLORYS Flather condition from
+    section 5 is split into tidal Flather on U/V and GLORYS NormalFlow on u/v (the GLORYS
+    contribution to barotropic transport is small on this shelf-tide-dominated domain).
+
 ## 7. Risks
 
 - **Open-boundary consistency with several layers.** The barotropic and baroclinic normal
