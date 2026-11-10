@@ -18,14 +18,14 @@ z = [-250 * (1 - k / 14)^1.7 for k in 0:14]
 
 shelf_grid = LatitudeLongitudeGrid(size=(220, 245, 14), longitude=(-10.5, -2.5), latitude=(49, 54.5), halo=(7, 7, 4); z)
 approaches_grid = nested_grid(shelf_grid; longitude=(-6.4, -4.6), latitude=(51.3, 52.4), depth=150, refinement)
-bay_grid = nested_grid(approaches_grid; longitude=(-5.50, -5.06), latitude=(51.68, 51.94), depth=80, refinement)
+bay_grid = nested_grid(approaches_grid; longitude=(-5.50, -5.06), latitude=(51.68, 51.94), depth=95, refinement)
 
-function emodnet_bottom_height(grid; interpolation_passes)
+function emodnet_bottom_height(grid; interpolation_passes, major_basins=Inf)
     metadatum = Metadatum(:bottom_height; dataset=EMODnet2024(), region=BoundingBox(grid))
-    return regrid_bathymetry(grid, metadatum; minimum_depth, interpolation_passes)
+    return regrid_bathymetry(grid, metadatum; minimum_depth, interpolation_passes, major_basins)
 end
 
-shelf_bottom = emodnet_bottom_height(shelf_grid; interpolation_passes=4)
+shelf_bottom = emodnet_bottom_height(shelf_grid; interpolation_passes=4, major_basins=1)
 approaches_bottom = emodnet_bottom_height(approaches_grid; interpolation_passes=2)
 bay_bottom = emodnet_bottom_height(bay_grid; interpolation_passes=1)
 

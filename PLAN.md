@@ -421,21 +421,25 @@ sequential enough that orchestration would cost more than it saves.
     Skomer, checks the file's coordinates against the native grid to a tenth of a cell, and
     regrids it. It needs the EMODnet server.
   - Check on the three real grids, `validation/pembrokeshire_bathymetry.jl`: shelf 220 × 245,
-    approaches 245 × 245, bay 305 × 290, 14 shared vertical faces to 250 m (nests cut at about
-    150 and 80 m), `width = 3`, `minimum_depth = 10`, `PartialCellBottom`.
+    approaches 245 × 245, bay 305 × 290, 14 shared vertical faces to 250 m (nests cut at 141
+    and 97 m, below their deepest columns at 135 and 90 m), `width = 3`, `minimum_depth = 10`,
+    `PartialCellBottom`, and `major_basins = Inf` on the nests. `regrid_bathymetry`'s default
+    `major_basins = 1` removes water that reaches the sea only through a nest's open sides: it
+    took 1868 wet columns (Milford Haven) from the bay, which the restriction then copied into
+    the approaches as land. A first run had both that and a bay cut at 77 m.
     - Rest, tolerance 1e-8 m s⁻¹ stated beforehand: after 1 hour (30, 150 and 750 steps),
       `max|u| = max|v| = max|w| = 0` and `max|η| = 0` exactly on all three levels. Departure:
       each level was run alone with closed sides, because the nested model does not exist on
       this branch. With a horizontally uniform stratification this shows only that partial
       cells create no pressure gradient; it should be repeated on the coupled nest.
     - Column volumes in the feedback region with `minimum_fractional_cell_height = 0`: shelf ←
-      approaches, 42 of 1849 parent columns differ by more than 1e-6, all 42 at the minimum
-      depth, the rest agree to 6.9e-13; total volume differs by −8.7e-5. Approaches ← bay, 138
-      of 2860 differ, all 138 at the minimum depth, the rest agree to 5.6e-12; total −7.1e-4.
-    - With the default `minimum_fractional_cell_height = 0.2`: 938 of 1849 and 978 of 2860
-      columns differ, by up to 6.7% and 9.5%; totals −3.6e-4 and −1.0e-3. `PartialCellBottom`
+      approaches, 48 of 1849 parent columns differ by more than 1e-6, all 48 at the minimum
+      depth, the rest agree to 6.9e-13; total volume differs by −1.3e-4. Approaches ← bay, 160
+      of 2860 differ, all 160 at the minimum depth, the rest agree to 5.6e-12; total −3.8e-4.
+    - With the default `minimum_fractional_cell_height = 0.2`: 946 of 1849 and 1025 of 2860
+      columns differ, by up to 6.7% and 9.5%; totals −4.3e-4 and −7.2e-4. `PartialCellBottom`
       deepens thin bottom cells on each grid separately. Restricting from the nest's adjusted
-      bottom instead was tried and is worse in total (+3.6e-3), because the parent's own
+      bottom instead was tried on the first run and was worse in total (+3.6e-3), because the parent's own
       adjustment only deepens. So exact column volumes need a minimum fractional cell height
       of zero; this is the partial-cell drift 3.4 anticipated, now with a number.
   - Independent review found, and the commit fixes: the restriction applied the minimum-depth
