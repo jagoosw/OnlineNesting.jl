@@ -26,10 +26,11 @@ $(TYPEDSIGNATURES)
 Return a `child` nested in `parent`, with boundary conditions that read `exchanger`. The parent
 is an ocean model or an `EarthSystemModel`; the child is either of these or another
 `TwoWayNestedModel`. A time step advances the parent, then the child to the same time in as
-many steps as there are child cells across a parent cell, then replaces the parent's tracers by
-the volume-weighted mean of the child's in the parent cells the child covers, apart from its
-outermost `width` parent cells. `Simulation` callbacks that act within a time step are passed
-to the parent.
+many steps as there are child cells across a parent cell, then feeds the child's state back to
+the parent in the parent cells the child covers, apart from its outermost `width` parent cells:
+tracers and sea level become the volume- and area-weighted means over the child's wet cells,
+and `u` and `v` carry the child's volume transport through each parent face. `Simulation`
+callbacks that act within a time step are passed to the parent.
 """
 function TwoWayNestedModel(parent::AbstractModel{TS, A}, child, exchanger; width) where {TS, A}
     grid = ocean_model(child).grid
@@ -72,32 +73,64 @@ end
 
 function feed_back!(nest, callbacks)
     parent, child = ocean_model(nest.parent), ocean_model(nest.child)
+    arch = architecture(parent.grid)
+    refinement = nest.refinement
     i, j, k = nest.feedback_indices
+    first_cell = (first(i) - nest.width, first(j) - nest.width, first(k))
+    surface = last(k)+1:last(k)+1
 
     for (name, parent_tracer) in pairs(parent.tracers)
-        launch!(architecture(parent.grid), parent.grid, KernelParameters(i, j, k), _restrict_tracer!, parent_tracer,
-                child.tracers[name], child.grid, nest.refinement, first(i) - nest.width, first(j) - nest.width, first(k))
+        launch!(arch, parent.grid, KernelParameters(i, j, k), _restrict_mean!, parent_tracer, child.tracers[name],
+                child.grid, Vᶜᶜᶜ, Center(), refinement, first_cell)
     end
 
+    launch!(arch, parent.grid, KernelParameters(i, j, surface), _restrict_mean!, parent.free_surface.displacement,
+            child.free_surface.displacement, child.grid, Azᶜᶜᶠ, Face(), refinement, first_cell)
+
+    # the faces on both sides of every cell of the feedback region
+    launch!(arch, parent.grid, KernelParameters(first(i):last(i)+1, j, k), _restrict_transport!, parent.velocities.u,
+            child.velocities.u, parent.grid, child.grid, Axᶠᶜᶜ, (1, refinement), refinement, first_cell)
+
+    launch!(arch, parent.grid, KernelParameters(i, first(j):last(j)+1, k), _restrict_transport!, parent.velocities.v,
+            child.velocities.v, parent.grid, child.grid, Ayᶜᶠᶜ, (refinement, 1), refinement, first_cell)
+
+    reconcile_state!(parent)
     update_level_state!(nest.parent, callbacks)
 
     return nothing
 end
 
-# (i′, j′, k′) are the cells of `grid` within the parent cell (i, j, k); (i₁, j₁, k₁) is the first parent cell `grid` covers
-@kernel function _restrict_tracer!(parent_tracer, tracer, grid, refinement, i₁, j₁, k₁)
+# (i′, j′, k′) are the nodes of `grid` within the parent cell (i, j, k); `first_cell` is the first parent cell `grid` covers
+@kernel function _restrict_mean!(parent_field, field, grid, weight, ℓz, refinement, first_cell)
     i, j, k = @index(Global, NTuple)
+    i₁, j₁, k₁ = first_cell
     k′ = k - k₁ + 1
-    volume = zero(grid)
+    total_weight = zero(grid)
     content = zero(grid)
 
     for n in 1:refinement, m in 1:refinement
         i′ = refinement * (i - i₁) + m
         j′ = refinement * (j - j₁) + n
-        V = Vᶜᶜᶜ(i′, j′, k′, grid) * !inactive_cell(i′, j′, k′, grid)
-        volume += V
-        content += @inbounds V * tracer[i′, j′, k′]
+        node_weight = weight(i′, j′, k′, grid) * !inactive_node(i′, j′, k′, grid, Center(), Center(), ℓz)
+        total_weight += node_weight
+        content += @inbounds node_weight * field[i′, j′, k′]
     end
 
-    @inbounds parent_tracer[i, j, k] = ifelse(volume > 0, content / volume, parent_tracer[i, j, k])
+    @inbounds parent_field[i, j, k] = ifelse(total_weight > 0, content / total_weight, parent_field[i, j, k])
+end
+
+# `block` is the number of faces of `grid`, in each horizontal direction, on the parent face (i, j, k)
+@kernel function _restrict_transport!(parent_velocity, velocity, parent_grid, grid, area, block, refinement, first_cell)
+    i, j, k = @index(Global, NTuple)
+    i₁, j₁, k₁ = first_cell
+    k′ = k - k₁ + 1
+    transport = zero(grid)
+
+    for n in 1:block[2], m in 1:block[1]
+        i′ = refinement * (i - i₁) + m
+        j′ = refinement * (j - j₁) + n
+        transport += @inbounds area(i′, j′, k′, grid) * velocity[i′, j′, k′]
+    end
+
+    @inbounds parent_velocity[i, j, k] = transport / area(i, j, k, parent_grid)
 end

@@ -16,9 +16,9 @@ using Oceananigans.Fields: Field, compute!, instantiated_location, interior, loc
 using Oceananigans.Grids: Bounded, Center, Face, LatitudeLongitudeGrid, MutableVerticalDiscretization, Open,
                           cpu_face_constructor_r, cpu_face_constructor_x, cpu_face_constructor_y,
                           halo_size, inactive_cell, inactive_node, reconstruction_faces, x_domain, y_domain
-using Oceananigans.Operators: Vᶜᶜᶜ
+using Oceananigans.Operators: Axᶠᶜᶜ, Ayᶜᶠᶜ, Azᶜᶜᶠ, Vᶜᶜᶜ
 using Oceananigans.OutputReaders: FieldTimeSeries
-using Oceananigans.TimeSteppers: TimeSteppers, time_step!, update_state!
+using Oceananigans.TimeSteppers: TimeSteppers, reconcile_state!, time_step!, update_state!
 using Oceananigans.Utils: KernelParameters, launch!
 
 using NumericalEarth.DataWrangling: DataWrangling, AbstractStaticBathymetry, Metadatum, bounding_box_suffix,
