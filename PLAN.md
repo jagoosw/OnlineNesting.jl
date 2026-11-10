@@ -387,6 +387,67 @@ sequential enough that orchestration would cost more than it saves.
   - Not covered: GPU; the docstring example is not run by any test or docs build; a nest
     crossing a periodic parent's seam is truncated at the seam; a requested box reaching the
     parent's edge snaps to it with no check that a margin remains for the exchanger.
+- 2026-11-10, session E (milestone 6), on branch `worktree-session-e` in `.claude/worktrees/session-e`:
+  - `EMODnet2024` in `src/emodnet.jl`: a region-windowed bathymetry dataset on NumericalEarth's
+    `DataWrangling` hooks, following `GLO30`. A `Metadatum` with a `BoundingBox` downloads that
+    window from the EMODnet ERDDAP server by index range, and `regrid_bathymetry` reads it. Land
+    without data (most land; 1724 such cells border the sea in the Pembrokeshire window) is
+    filled with a height of 10 m, the prototype's value.
+  - `blend_parent_bottom!(bottom_height, parent_bottom_height; width, minimum_depth)` and
+    `restrict_bottom!(parent_bottom_height, bottom_height; width, minimum_depth)` in
+    `src/nested_bathymetry.jl`, with `width` in parent cells for both. The blend copies the
+    parent's bottom onto the nest cell by cell (no interpolation, so the nest's boundary has the
+    parent's coastline) and ramps with NumericalEarth's `blend_parent_terrain!`. The restriction
+    is the area-weighted mean of the nest's depth with land as zero depth.
+  - Departures from 3.4:
+    - Both work on depth with land at zero height, not on raw bottom height, so land elevation
+      does not enter a mean. Both also keep the sea floor within the depth of the nest grid.
+    - No wetting and drying means a minimum depth, which an exact mean cannot honor at the coast.
+      One rule serves both functions: a column shallower than half of `minimum_depth` becomes
+      land, any other wet column is at least `minimum_depth` deep. This differs from
+      `regrid_bathymetry`, which deepens every wet cell to the minimum.
+    - The restriction is array operations on the CPU (a reshape and block sum), not a kernel,
+      and takes its weights from the grid faces (`Δλ Δ(sin φ)`), not from `Az`. Milestone 4's
+      tracer restriction may replace it.
+  - New dependencies: `NCDatasets` (the downloaded file marks land as missing, which
+    `regrid_bathymetry` cannot read, so the file is rewritten) and the `Downloads` standard
+    library (to add a `download` method). `NumericalEarth` and `NCDatasets` added to the tests.
+  - Tests, 159 of 159 passing (130 from milestone 1): `test/test_nested_bathymetry.jl` (24) on a
+    synthetic sloping bottom at refinements 2 and 5: the nest boundary equals the parent, the
+    ramp is linear cell by cell, the nest interior and the parent outside the feedback region
+    are untouched, column volumes from the immersed grids (`Az` × column depth) agree to `≈`
+    wherever the parent is deeper than the minimum depth, and uniform nests of 4, 6 and 30 m
+    restrict to land, 10 m and 30 m. `test/test_emodnet.jl` (5) downloads a window around
+    Skomer, checks the file's coordinates against the native grid to a tenth of a cell, and
+    regrids it. It needs the EMODnet server.
+  - Check on the three real grids, `validation/pembrokeshire_bathymetry.jl`: shelf 220 × 245,
+    approaches 245 × 245, bay 305 × 290, 14 shared vertical faces to 250 m (nests cut at about
+    150 and 80 m), `width = 3`, `minimum_depth = 10`, `PartialCellBottom`.
+    - Rest, tolerance 1e-8 m s⁻¹ stated beforehand: after 1 hour (30, 150 and 750 steps),
+      `max|u| = max|v| = max|w| = 0` and `max|η| = 0` exactly on all three levels. Departure:
+      each level was run alone with closed sides, because the nested model does not exist on
+      this branch. With a horizontally uniform stratification this shows only that partial
+      cells create no pressure gradient; it should be repeated on the coupled nest.
+    - Column volumes in the feedback region with `minimum_fractional_cell_height = 0`: shelf ←
+      approaches, 42 of 1849 parent columns differ by more than 1e-6, all 42 at the minimum
+      depth, the rest agree to 6.9e-13; total volume differs by −8.7e-5. Approaches ← bay, 138
+      of 2860 differ, all 138 at the minimum depth, the rest agree to 5.6e-12; total −7.1e-4.
+    - With the default `minimum_fractional_cell_height = 0.2`: 938 of 1849 and 978 of 2860
+      columns differ, by up to 6.7% and 9.5%; totals −3.6e-4 and −1.0e-3. `PartialCellBottom`
+      deepens thin bottom cells on each grid separately. Restricting from the nest's adjusted
+      bottom instead was tried and is worse in total (+3.6e-3), because the parent's own
+      adjustment only deepens. So exact column volumes need a minimum fractional cell height
+      of zero; this is the partial-cell drift 3.4 anticipated, now with a number.
+  - Independent review found, and the commit fixes: the restriction applied the minimum-depth
+    rule to the whole parent, not just the feedback region; a `Float32` grid with a `Float64`
+    minimum depth gave an abstractly typed array; an interrupted download left an unfilled file
+    in the cache; a bounding box in 0–360° longitudes gave a wrong index; and the coordinate
+    test's tolerance was too loose to catch a one-cell shift.
+  - Open, for a decision: EMODnet heights are relative to lowest astronomical tide, not mean sea
+    level, which is meters in this region. Nothing corrects for it.
+  - Not covered: GPU and `Float32` grids are untested; a `Metadatum` without a region asks the
+    server for the whole dataset; `width = 0` in the blend gives NaN along the boundary; nothing
+    checks that a nest's feedback region stays clear of its parent's own blended rim.
 
 ## 7. Risks
 
