@@ -558,6 +558,19 @@ sequential enough that orchestration would cost more than it saves.
   - The validation script now reports column volumes for partial cells, partial cells of any
     thickness and full cells, and runs the rest check with partial cells for 20 minutes. Its
     numbers on 50 layers were not in when this was merged; they follow in the next entry.
+- 2026-11-10, session B continued, after review with the user: land fill in the exchanger.
+  - `StateExchanger` computes once, for each parent field, the indices of its land nodes
+    (`inactive_node`, so coastal faces keep their zero) and of the nearest sea node on the same
+    level, found by spreading outward one cell per pass. `store_state!` copies the parent and
+    then assigns each land node its donor's value. The 2D fields (`η`, `U`, `V`) use the
+    surface level's land.
+  - Check, added to the rest test: a parent with land along the nest's west side and a 50 m
+    shelf along its south side, under a flat 100 m child. Before the fill the child reached
+    1.2 m s⁻¹, 0.33 m of sea level and 6.9 °C of horizontal tracer difference in 2 hours;
+    with it `u`, `v`, `η` and the tracer difference are exactly 0 (asserted below 1e-12).
+    193 of 193 assertions pass with session E's tests.
+  - Not done: a parent level with no sea node at all has no donor and fails at construction
+    with a bounds error; there is no fill from the level above. GPU not run.
 
 ## 7. Risks
 

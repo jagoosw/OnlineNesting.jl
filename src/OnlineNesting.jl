@@ -6,15 +6,16 @@ export nested_grid, parent_indices,
        EMODnet2024, refer_to_mean_sea_level!, blend_parent_bottom!, restrict_bottom!
 
 using Oceananigans: AbstractModel, prognostic_fields
-using Oceananigans.Architectures: architecture
+using Oceananigans.AbstractOperations: KernelFunctionOperation
+using Oceananigans.Architectures: architecture, on_architecture
 using Oceananigans.BoundaryConditions: FieldBoundaryConditions, GravityWaveRadiationBoundaryCondition,
                                        LeftBoundary, NormalFlowBoundaryCondition, RightBoundary,
                                        TracerReservoir, ValueBoundaryCondition, fill_halo_regions!,
                                        regularize_boundary_condition
-using Oceananigans.Fields: Field, instantiated_location, interior, set!
+using Oceananigans.Fields: Field, compute!, instantiated_location, interior, location, set!
 using Oceananigans.Grids: Bounded, Center, Face, LatitudeLongitudeGrid, MutableVerticalDiscretization, Open,
                           cpu_face_constructor_r, cpu_face_constructor_x, cpu_face_constructor_y,
-                          halo_size, reconstruction_faces, x_domain, y_domain
+                          halo_size, inactive_node, reconstruction_faces, x_domain, y_domain
 using Oceananigans.OutputReaders: FieldTimeSeries
 using Oceananigans.TimeSteppers: TimeSteppers, time_step!, update_state!
 

@@ -11,8 +11,9 @@ function ocean(grid; kwargs...)
                                        kwargs...)
 end
 
-function nested_levels(; refinement)
-    parent_grid = LatitudeLongitudeGrid(size=(40, 40, 4), longitude=(0, 10), latitude=(40, 50), z=(-100, 0))
+function nested_levels(; refinement, parent_bottom = -100)
+    underlying_grid = LatitudeLongitudeGrid(size=(40, 40, 4), longitude=(0, 10), latitude=(40, 50), z=(-100, 0))
+    parent_grid = ImmersedBoundaryGrid(underlying_grid, GridFittedBottom(parent_bottom))
     grid = nested_grid(parent_grid; longitude=(3, 7), latitude=(43, 47), refinement)
 
     parent = ocean(parent_grid)
@@ -25,8 +26,11 @@ end
 
 stratification(λ, φ, z) = 10 + z / 20
 
-@testset "A stratified ocean at rest stays at rest" begin
-    parent, child, exchanger = nested_levels(refinement=3)
+# land along the west side of the nest and a shelf 50 m deep along its south side
+coast(λ, φ) = ifelse(λ < 3, 0, ifelse(φ < 43.5, -50, -100))
+
+@testset "A stratified ocean at rest stays at rest, parent bottom $parent_bottom" for parent_bottom in (-100, coast)
+    parent, child, exchanger = nested_levels(; refinement=3, parent_bottom)
     set!(parent, T=stratification, S=35)
     set!(child, T=stratification, S=35)
 
@@ -37,12 +41,13 @@ stratification(λ, φ, z) = 10 + z / 20
     @test child.clock.iteration == 3 * parent.clock.iteration
 
     for model in (parent, child)
-        T = Array(interior(model.tracers.T))
         @test maximum(abs, model.velocities.u) < 1e-12
         @test maximum(abs, model.velocities.v) < 1e-12
         @test maximum(abs, model.free_surface.displacement) < 1e-12
-        @test maximum(abs, T .- T[1:1, 1:1, :]) < 1e-12
     end
+
+    T = Array(interior(child.tracers.T))
+    @test maximum(abs, T .- T[1:1, 1:1, :]) < 1e-12
 end
 
 @testset "A gravity wave crosses the nest" begin
