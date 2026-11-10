@@ -42,19 +42,19 @@ surface(model) = Array(interior(model.free_surface.displacement))[:, :, 1]
 
     i, j, k = parent_indices(parent_grid, grid)
     Nx, Ny, Nz = length(i), length(j), length(k)
-    inner_i, inner_j = 1+width:Nx-width, 1+width:Ny-width
+    inner = (1+width:Nx-width, 1+width:Ny-width)
 
     x_transport(model) = Array(interior(Field(model.velocities.u * Ax)))
     y_transport(model) = Array(interior(Field(model.velocities.v * Ay)))
 
     nest_transport = sum(reshape(x_transport(child)[1:refinement:end, :, :], Nx + 1, refinement, Ny, Nz), dims=2)[:, 1, :, :]
     parent_transport = x_transport(parent)[first(i):last(i)+1, j, k]
-    @test parent_transport[1+width:Nx-width+1, inner_j, :] ≈ nest_transport[1+width:Nx-width+1, inner_j, :]
+    @test parent_transport[1+width:Nx-width+1, inner[2], :] ≈ nest_transport[1+width:Nx-width+1, inner[2], :]
     @test all(parent_transport[[1:width; Nx-width+2:Nx+1], :, :] .== 0)
 
     nest_transport = sum(reshape(y_transport(child)[:, 1:refinement:end, :], refinement, Nx, Ny + 1, Nz), dims=1)[1, :, :, :]
     parent_transport = y_transport(parent)[i, first(j):last(j)+1, k]
-    @test parent_transport[inner_i, 1+width:Ny-width+1, :] ≈ nest_transport[inner_i, 1+width:Ny-width+1, :]
+    @test parent_transport[inner[1], 1+width:Ny-width+1, :] ≈ nest_transport[inner[1], 1+width:Ny-width+1, :]
     @test all(parent_transport[:, [1:width; Ny-width+2:Ny+1], :] .== 0)
 
     # the barotropic transport follows the velocity it was given
@@ -65,15 +65,31 @@ surface(model) = Array(interior(model.free_surface.displacement))[:, :, 1]
     wet_area = (bottom.(λ, φ') .< 0) .* diff(sind.(φnodes(grid, Face())))'
     block_sum(a) = sum(reshape(a, refinement, Nx, refinement, Ny), dims=(1, 3))[1, :, 1, :]
     wet_mean = block_sum(surface(child) .* wet_area) ./ block_sum(wet_area)
-    wet = block_sum(wet_area)[inner_i, inner_j] .> 0
+    wet = block_sum(wet_area)[inner...] .> 0
 
     η = surface(parent)[i, j]
     @test !all(wet) && any(wet)
-    @test η[inner_i, inner_j][wet] ≈ wet_mean[inner_i, inner_j][wet]
-    @test all(η[inner_i, inner_j][.!wet] .== -1)
+    @test η[inner...][wet] ≈ wet_mean[inner...][wet]
+    @test all(η[inner...][.!wet] .== -1)
 end
 
-@testset "A balanced eddy on the nest appears on the parent and stays balanced" begin
+@testset "A parent face thinner than the nest's takes no more than the nest's velocity" begin
+    underlying_grid = LatitudeLongitudeGrid(size=(20, 20, 4), longitude=(0, 10), latitude=(40, 50), z=(-100, 0))
+    thin_cells = PartialCellBottom((λ, φ) -> ifelse(λ > 5, -75.01, -100), minimum_fractional_cell_height=0)
+    parent_grid = ImmersedBoundaryGrid(underlying_grid, thin_cells)
+    grid = nested_grid(underlying_grid; longitude=(3, 7), latitude=(43, 47), refinement=3)
+    parent, child, nest = nested_levels(parent_grid, grid; width=2)
+
+    set!(parent, T=stratification, S=35)
+    set!(child, T=stratification, S=35, u=0.1, v=0.1)
+    update_state!(nest)
+
+    @test 0.099 < maximum(parent.velocities.u) < 0.101
+    @test 0.099 < maximum(parent.velocities.v) < 0.101
+end
+
+# The largest sea level left on the parent, relative to its start, when it runs alone from a nest's eddy
+function remaining_eddy(; balanced)
     parent_grid = LatitudeLongitudeGrid(size=(40, 40, 4), longitude=(0, 10), latitude=(40, 50), z=(-100, 0))
     grid = nested_grid(parent_grid; longitude=(3, 7), latitude=(43, 47), refinement=3)
     parent, child, nest = nested_levels(parent_grid, grid; width=2)
@@ -89,20 +105,20 @@ end
     set!(parent, T=stratification, S=35)
     set!(child; T=stratification, S=35, η, u, v)
     update_state!(nest)
-
-    i, j, _ = parent_indices(parent_grid, grid)
-    outside = trues(size(parent_grid, 1), size(parent_grid, 2))
-    outside[i, j] .= false
+    balanced || set!(parent, u=0, v=0)
 
     amplitude = maximum(surface(parent))
-    radiated = 0.0
+    remaining = amplitude
 
     for _ in 1:48
-        time_step!(nest, 5minutes)
-        radiated = max(radiated, maximum(abs, surface(parent)[outside]))
+        time_step!(parent, 5minutes)
+        remaining = min(remaining, maximum(surface(parent)))
     end
 
-    @test amplitude > 0.015
-    @test abs(maximum(surface(parent)) - amplitude) < 0.1 * amplitude
-    @test radiated < 0.05 * amplitude
+    return remaining / amplitude
+end
+
+@testset "A balanced eddy on the nest is balanced on the parent" begin
+    @test remaining_eddy(balanced=true) > 0.75
+    @test remaining_eddy(balanced=false) < 0.25
 end

@@ -7,7 +7,7 @@ barotropic transport and sea level) to the parent. The outermost level is any Nu
 case is three levels: NW European shelf → Pembrokeshire approaches → St Brides Bay.
 
 Versions this plan was checked against: Oceananigans 0.117.2, NumericalEarth 0.9.2, Julia 1.12.
-Milestones 0–4 and 6 have been run (status log, section 6); the checks of later milestones are still to be done.
+Milestones 0–6 have been run (status log, section 6); the checks of later milestones are still to be done.
 
 ## 1. Decisions
 
@@ -681,6 +681,97 @@ sequential enough that orchestration would cost more than it saves.
     a 12° channel (`idealized_blob.mp4`) and the wave (`idealized_wave.mp4`). Not tracked.
   - Merging: `src/OnlineNesting.jl` and `validation/pembrokeshire_tide.jl` are also changed,
     uncommitted, in the main working tree.
+- 2026-11-10, session D (milestone 5), on branch `session-d` in `.claude/worktrees/session-d`,
+  because the main working tree again had another session's uncommitted edits. **Pause for review.**
+  - Built, all in `feed_back!` in `src/two_way_nested_model.jl` (source +45 lines net):
+    - `η`: the area-weighted mean over the child's wet columns, through the same kernel as the
+      tracers (`_restrict_mean!`, which takes the weight and the vertical location). The parent
+      keeps its value where the child is all land.
+    - `u`, `v`: `Σ uᶜ Aᶜ / max(Σ Aᶜ, Aᴾ)` over the child faces on each parent face
+      (`_restrict_transport!`), on the faces on both sides of every cell of the feedback region,
+      so the divergence of a fed-back cell is entirely the child's.
+    - `U`, `V`, halos and masking: Oceananigans' `reconcile_state!` on the parent, then the
+      state update that was already there. Nothing of the barotropic mode is written by hand.
+  - **Departure from 3.5, for review: the denominator of the velocity restriction.** The table has
+    `Σ Aᶜ`. The first version divided by the parent's own face area, which keeps the transport
+    exactly; the numerics reviewer showed it is unstable where a parent partial cell is thinner
+    than the child's faces: a flat child at 0.1 m s⁻¹ over a parent bottom cell 1 cm thick gave
+    the parent 250 m s⁻¹, and at 1e-13 m thick NaN on both levels within 3 steps. Session E found
+    the real grids need a minimum fractional cell height of 0, so this is reachable. With the
+    larger of the two areas the parent keeps the child's transport wherever its face is at least
+    as large, and takes the child's mean velocity (losing transport) where it is smaller. On flat
+    and grid-fitted bottoms the three forms are the same. How much transport the real grids lose
+    this way is not measured.
+  - The filtered-state question of 3.5: **nothing has to be reset.** Reading: every Runge-Kutta
+    stage zeroes `η̅`, `U̅`, `V̅`, `Ũ`, `Ṽ` and restarts `η`, `U`, `V` from the fields cached at the
+    start of the step, which is after the feedback; the transport velocities are copied from
+    `u`, `v` at the start of each stage. Runs: filling the parent's filtered state with 1e3
+    after a feedback leaves the next nest step bit-identical; and (reviewer) a parent after 3
+    nest steps and a fresh model given the same `u`, `v`, `η`, `T`, `S` are bitwise equal in
+    `u`, `v`, `w`, `η`, `U`, `V`, `T`, `S` before and after one more step. The volume budget did
+    not decide this, contrary to 3.5: on a static vertical coordinate it cannot.
+  - Checks, 238 of 238 assertions pass (218 before).
+    All on four layers, refinement 3, split Runge-Kutta 3, `width = 2`, CPU, static `z`.
+    - Check A, rest: the existing rest tests (flat, coast with land and a shelf, three levels,
+      two `EarthSystemModel` levels) now run with all feedback and still give exactly 0.
+    - Check B, eddy, `test/test_momentum_feedback.jl`: a geostrophic eddy of 0.02 m and radius
+      0.25° (one parent cell, three child cells, a tenth of the barotropic deformation radius)
+      set on the child only, 40 × 40 parent with Coriolis. After the feedback at initialization
+      the parent's peak is 0.0159 m. The parent is then stepped **alone** for 4 hours:
+      its peak never falls below 84 % of the start (90 % at the end) with the fed-back
+      velocities, and falls to 10 % with them set to zero (16 % at the end); asserted above
+      75 % and below 25 %. With radius 0.5°: 89 % and 15 %. The thresholds were chosen after
+      seeing these numbers.
+      - The first version of this test ran the nest and bounded the sea level radiated outside
+        it at 5 % of the eddy (set beforehand). It measured 1.4 %, but 2.9 % with the `u`, `v`
+        feedback removed, so it passed either way: the parent's peak is rewritten from the child
+        every step. It was replaced. In that coupled run the parent's eddy went from 0.0159 to
+        0.0156 m in 4 hours while the child's went from 0.02 to 0.0191 m.
+    - Check C, composite volume in the milestone 2 wave run (80 steps), relative to the bump's
+      initial volume, from a run outside the tests:
+
+      | | parent alone, largest | composite, largest | composite, end |
+      |---|---|---|---|
+      | feedback on | 2.4e-3 | 6.1e-3 | 1.9e-3 |
+      | feedback off | 5e-15 | 7.0e-3 | 3.6e-3 |
+
+      The wave difference of milestone 2 (child block mean against parent over the whole nest)
+      is **4.78 % with feedback, 3.68 % without** (3.6 % before this session). It is zero by
+      construction in the feedback region now, so the number is the rim's, and it got worse,
+      not better; check C asked for "holds or improves". The assertion is 5 %, so the margin is
+      0.2 points. Not investigated.
+    - Restriction, same file, for a grid-fitted and a partial-cell child 50 m deep with land,
+      under a flat 100 m parent: the parent's `u Ax` and `v Ay` equal the sum of the child's
+      over each face (`≈`), the faces of the rim are untouched, `U = ∫u dz` on the parent, and
+      `η` equals a wet-area mean computed in the test from the grid faces, with the parent's
+      value kept under an all-land block. A parent with a 1 cm bottom cell under a flat child
+      at 0.1 m s⁻¹ gets 0.1 m s⁻¹.
+  - Independent reviews. Restraint: source clean but for one local, inlined; two test names
+    renamed. Not taken: merging the new tests into `test_tracer_feedback.jl` to share its helper
+    (it would put Coriolis into the blob test), and cutting the `U = ∫u dz` assertion.
+    Numerics: the thin-face instability and the eddy test above, both fixed; indexing checked
+    by coordinates at refinements 2 and 3, `depth = 50` and widths 0 to 2 (transport error
+    below 2e-16, the last face included); three levels feed back finest first, with each level
+    equal to the restriction of the one below after 20 steps.
+  - Known and not fixed:
+    - **z-star is not supported by the velocity feedback.** The face areas are read before the
+      parent's grid is rescaled to the new `η`, so the transport is off by `Δη / H` (2e-2 in the
+      reviewer's run with `η` from −1 to 1 m on 100 m). Tracer weights have the same ordering.
+    - `η` is the wet mean spread over the parent's whole cell, so volume is not preserved where
+      the child is part land; `η` is also written into parent land under a wet child.
+    - `reconcile_state!` refills the halos of a level with its own open sides, which moved `U`
+      on those faces by up to 4.7e-2 of 0.97 in the reviewer's run (interior `η` differed by
+      8e-10 of 2e-2 over 40 steps).
+    - Immersed parents whose bottoms differ from the child's, measured by the reviewer before
+      the denominator changed: no NaN, about 5 % of transport lost at 4 to 8 of 80 faces, cause
+      not found. Not measured again.
+    - The composite volume and wave numbers above were measured before the denominator changed;
+      those runs have flat bottoms, where it changes nothing.
+    - Not run: GPU, the real partial-cell grids, an `EarthSystemModel` parent with anything but
+      rest, a periodic parent with momentum feedback.
+  - Nothing was done on the Pembrokeshire case, at the user's instruction.
+  - Merging: `src/OnlineNesting.jl` changes two import lines that the main working tree also has
+    uncommitted edits to.
 
 ## 7. Risks
 
