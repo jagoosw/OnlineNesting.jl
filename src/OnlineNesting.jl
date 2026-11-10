@@ -15,7 +15,7 @@ using Oceananigans.BoundaryConditions: FieldBoundaryConditions, GravityWaveRadia
 using Oceananigans.Fields: Field, compute!, instantiated_location, interior, location, set!
 using Oceananigans.Grids: Bounded, Center, Face, LatitudeLongitudeGrid, MutableVerticalDiscretization, Open,
                           cpu_face_constructor_r, cpu_face_constructor_x, cpu_face_constructor_y,
-                          halo_size, inactive_cell, inactive_node, reconstruction_faces, x_domain, y_domain
+                          halo_size, inactive_node, reconstruction_faces, x_domain, y_domain
 using Oceananigans.Operators: Axᶠᶜᶜ, Ayᶜᶠᶜ, Azᶜᶜᶠ, Vᶜᶜᶜ
 using Oceananigans.OutputReaders: FieldTimeSeries
 using Oceananigans.TimeSteppers: TimeSteppers, reconcile_state!, time_step!, update_state!
