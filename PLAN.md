@@ -405,7 +405,10 @@ sequential enough that orchestration would cost more than it saves.
     `EarthSystemModel`, so a builder would have to forward all of their keywords, and the
     plan's two-argument `TwoWayNestedModel(approaches, bay)` had no source for the exchanger.
     Three levels compose as `TwoWayNestedModel(shelf, TwoWayNestedModel(approaches, bay, e₂), e₁)`
-    with `e₂ = StateExchanger(approaches)`; this is on paper only, milestone 3 runs it.
+    with `e₂ = StateExchanger(approaches)`; this is on paper only, milestone 3 runs it. As
+    built, the outer nest would need `refinement` passed, because the default reads `child.grid`.
+    The name `StateExchanger` is also that of the type in NumericalEarth's Breeze extension,
+    which matters when this goes upstream (milestone 9).
   - Checks, `test/test_one_way_nest.jl`, 14 assertions, all pass (144 of 144 with session A's).
     Setup: 40 × 40 × 4 parent over 10° × 10°, 100 m deep, closed sides; nest over the central
     4° × 4° at refinement 3 in space and time; `T`, `S` with a linear stratification; split
@@ -425,8 +428,8 @@ sequential enough that orchestration would cost more than it saves.
        side by calling `regularize_boundary_condition` itself. The sea level's copy is held at
        `(Center, Center, Nothing)` so it is interpolated at the transport's two-dimensional node.
     2. Normal velocity and barotropic transport with several layers: consistent. At the child's
-       open faces after the wave run, `|∫u dz − U|` and `|∫v dz − V|` are below 1e-16 with `|U|`
-       up to 0.24 m² s⁻¹ (asserted below 1e-12). Oceananigans' barotropic corrector covers the
+       open faces after the wave run, `|∫u dz − U|` is 3e-17 and `|∫v dz − V|` 6e-17, with
+       `|U|` up to 0.24 and `|V|` up to 0.33 m² s⁻¹ there (asserted below 1e-12). Oceananigans' barotropic corrector covers the
        boundary faces, so the condition on `u` sets only the departure from the depth mean.
     3. The Breeze `StateExchanger`: no precedent. It follows a prescribed parent's fixed time
        axis and never rewrites times. Here the nest records the parent into level 1 just before
@@ -452,9 +455,15 @@ sequential enough that orchestration would cost more than it saves.
   - Known and not fixed:
     - `Simulation` callbacks passed to the nest's `time_step!` and `update_state!` are dropped.
     - A child tracer the parent lacks gets no boundary condition or sponge, silently.
-    - Read from the source, not measured: under split Runge-Kutta the barotropic substep clock
-      of stage 3 starts at `t + Δt/2` and runs a full `Δt`, so on a child's last step of a parent
-      step the Flather values are queried past the window and clamp to the parent's newest level.
+    - Measured on a bare model with a Flather function that records its clock: a split
+      Runge-Kutta 3 step from 90 s to 180 s queries the exterior values at times from 90 s to
+      242 s, because each stage's barotropic substeps are labeled from the stage's start time.
+      Every child step therefore reads parent values up to 0.7 child steps late, and on the
+      last child step of a parent step the queries pass the window and clamp to the parent's
+      newest level. (The reviewer's reading, that all queries stay inside the window, holds
+      for the three-dimensional fields only.)
+    - No test isolates the time interpolation: if the series' times were never rewritten,
+      every query would clamp to the newest level and the wave test would probably still pass.
     - The clocks agree exactly only when `Δt / refinement` is representable; with `Δt = 0.1`
       the reviewer saw them differ by 1e-13 after 200 steps. Milestone 3's check has to allow
       for this or the nest has to set the child's time.

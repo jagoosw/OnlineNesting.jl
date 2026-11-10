@@ -71,7 +71,7 @@ end
     u, v = child.velocities
     U, V = child.free_surface.barotropic_velocities
     transport_error = Array(interior(Field(Integral(u, dims=3)))) .- Array(interior(U))
-    @test maximum(abs, U) > 0.1
+    @test maximum(abs, Array(interior(U))[[1, end], :, :]) > 0.1
     @test maximum(abs, transport_error[[1, end], :, :]) < 1e-12
     transport_error = Array(interior(Field(Integral(v, dims=3)))) .- Array(interior(V))
     @test maximum(abs, transport_error[:, [1, end], :]) < 1e-12
