@@ -815,6 +815,15 @@ sequential enough that orchestration would cost more than it saves.
   - `validation/idealized_nests.jl` also records `idealized_eddy.mp4`: three levels with
     Coriolis, the eddy of check B set in the bay only, 12 hours. All three videos were recorded
     again with full feedback. Not tracked.
+- 2026-11-10, session D continued: the z-star defect is fixed upstream in a draft pull request,
+  CliMA/Oceananigans.jl#6485 (branch `jsw/open-boundary-filtered-transport`, worktree
+  `~/Documents/Oceananigans-open-boundary-transport`). The filtered transport is accumulated
+  after the barotropic boundary conditions, on the boundary faces too, and no longer carries
+  `U`'s conditions. With that patch applied to a copy of 0.117.2, the z-star child's salinity
+  error in the nested wave run is 1.8e-13 (2.4e-3 without) and the wave difference is unchanged.
+  Until it is released the `@test_broken` in `test/test_two_level_nest.jl` stands; once it is,
+  that assertion passes and has to become a `@test`. The pull request's own tests ran on CPU
+  for three files only; its CI has not been read.
 
 ## 7. Risks
 
