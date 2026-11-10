@@ -63,6 +63,34 @@ end
 """
 $(TYPEDSIGNATURES)
 
+Lowest astronomical tide height [m] relative to mean sea level, computed from the TPXO10 atlas as
+the negative sum of tidal elevation amplitudes: LAT ≈ -Σ|Aᵢ|. The result is a `Field` on the
+atlas window grid (0–360° longitude); wrap it for grids that use negative longitudes:
+
+    lowest_tide(λ, φ) = interpolate((mod(λ, 360), φ), lat_field)
+
+then pass to [`refer_to_mean_sea_level!`](@ref).
+"""
+function lowest_astronomical_tide(dataset::TPXO10Atlas, grid;
+                                  constituents = keys(earth_tidal_constituents))
+    region = (longitude = x_domain(grid) .+ (-1, 1),
+              latitude  = y_domain(grid) .+ (-1, 1))
+    window = atlas_window(dataset, region)
+
+    lat_height = Field{Center, Center, Nothing}(window.grid)
+
+    for name in constituents
+        path = constituent_path(dataset, "h", name)
+        η = atlas_field(window, path, ("hRe", "hIm"), (Center, Center), 1e-3)
+        interior(lat_height, :, :, 1) .-= abs.(interior(η, :, :, 1))
+    end
+
+    return lat_height
+end
+
+"""
+$(TYPEDSIGNATURES)
+
 Read the harmonic constants of `constituent` at each `(longitude, latitude)` point in `nodes` from
 the TPXO10 atlas. Elevations are in meters, eastward and northward transports in meters squared
 per second.

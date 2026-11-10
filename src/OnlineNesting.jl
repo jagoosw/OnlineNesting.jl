@@ -4,11 +4,11 @@ export nested_grid, parent_indices,
        StateExchanger, nested_boundary_conditions, nested_forcings,
        TwoWayNestedModel,
        EMODnet2024, refer_to_mean_sea_level!, blend_parent_bottom!, restrict_bottom!,
-       TPXO10Atlas, earth_tidal_constituents, earth_tidal_harmonics
+       TPXO10Atlas, lowest_astronomical_tide, earth_tidal_constituents, earth_tidal_harmonics
 
 using Dates: Dates, DateTime
 
-using Oceananigans: AbstractModel, TracerTendencyCallsite, fields, prognostic_fields
+using Oceananigans: Oceananigans, AbstractModel, TracerTendencyCallsite, fields, prognostic_fields
 using Oceananigans.AbstractOperations: KernelFunctionOperation
 using Oceananigans.Advection: Centered
 using Oceananigans.Architectures: architecture, on_architecture
