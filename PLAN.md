@@ -571,6 +571,25 @@ sequential enough that orchestration would cost more than it saves.
     193 of 193 assertions pass with session E's tests.
   - Not done: a parent level with no sea node at all has no donor and fails at construction
     with a bounds error; there is no fill from the level above. GPU not run.
+- 2026-11-10, session B continued: the Pembrokeshire chain with an M2 tide, one way,
+  `validation/pembrokeshire_tide.jl`. Ahead of milestones 3 and 8; a demonstration, not a check.
+  - Setup: half the target resolution (shelf 110 × 122 × 4 at 5 km, approaches 125 × 120 × 3
+    at 1 km, bay 150 × 145 × 2 at 200 m), EMODnet bottoms reconciled as in session E, partial
+    cells, temperature stratification, steps of 200, 40 and 8 s. The shelf's four sides are
+    open with a uniform 1 m M2 sea level in a Flather condition. The three levels are
+    `TwoWayNestedModel(shelf, TwoWayNestedModel(approaches, bay, e₂; refinement), e₁; refinement)`
+    with `refinement` passed, which is the first run of three levels. Two M2 periods took
+    15 minutes on 8 CPU threads; the full-resolution case was about 5.4 s per shelf step
+    (80 minutes) and was stopped.
+  - No tide imposed, 3 shelf steps: max speed 1.2e-7 m s⁻¹ on the shelf, 4.1e-7 on the
+    approaches, 1.4e-6 in the bay; not zero, and not traced to the partial cells or the nesting.
+  - Second period, sea level: approaches against shelf at St Brides Bay 1.63 against 1.66 m,
+    rms difference 0.021 m; bay against approaches 1.63 against 1.63 m, rms 0.002 m; at Ramsey
+    Sound rms 0.027 and 0.018 m. Correlations 0.9999 or higher.
+  - Second period, surface speed in Ramsey Sound: peaks 0.61 (shelf), 1.11 (approaches) and
+    1.02 m s⁻¹ (bay), rms differences 0.30 and 0.36 m s⁻¹: the sound is narrower than a shelf
+    cell and about one approaches cell wide, so the levels are not expected to agree there.
+  - Not run on a GPU; the script takes `arch`, edited in after this run and not rerun.
 
 ## 7. Risks
 
