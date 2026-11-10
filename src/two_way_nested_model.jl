@@ -43,7 +43,7 @@ the volume and tracer that the parent and the child carried through its edge dur
 The parent outside the region and the child inside it then conserve volume together and, on a
 z-star grid, tracer content, when `width` is at least 1 and nothing forces the child within the
 region. The levels use a split Runge-Kutta time stepper. `Simulation` callbacks that act within
-a time step are passed to the parent.
+a time step are passed to the parent's `time_step!`.
 """
 function TwoWayNestedModel(parent::AbstractModel{TS, A}, child, exchanger; width) where {TS, A}
     grid = ocean_model(child).grid
@@ -74,6 +74,9 @@ function TimeSteppers.time_step!(nest::TwoWayNestedModel, Δt; callbacks=[])
     nest.clock.iteration == 0 && update_state!(nest, callbacks)
 
     time = nest.clock.time
+    fill!(nest.flux_mismatch.volume, 0)
+    foreach(mismatch -> fill!(mismatch, 0), nest.flux_mismatch.tracers)
+
     store_state!(nest.exchanger, 1)
     time_step!(nest.parent, Δt; callbacks = [callbacks..., nest.flux_callbacks.parent])
     store_state!(nest.exchanger, 2)
@@ -90,6 +93,7 @@ function TimeSteppers.time_step!(nest::TwoWayNestedModel, Δt; callbacks=[])
 
     # the last step is the time remaining, so the child arrives at the parent's time exactly
     time_step!(nest.child, nest.clock.time - nest.child.clock.time; callbacks = child_callbacks)
+    correct_fluxes!(nest)
     feed_back!(nest, callbacks)
 
     return nothing
@@ -108,8 +112,6 @@ function feed_back!(nest, callbacks)
     i, j, k = nest.feedback_indices
     first_cell = (first(i) - nest.width, first(j) - nest.width, first(k))
     cells = (refinement, refinement)
-
-    correct_fluxes!(parent, nest.flux_mismatch, i, j)
 
     for (name, parent_tracer) in pairs(parent.tracers)
         launch!(arch, parent.grid, KernelParameters(i, j, k), _restrict!, parent_tracer, child.tracers[name],
@@ -217,18 +219,19 @@ end
     @inbounds mismatch[i, j, k] += Δt * total_flux
 end
 
-function correct_fluxes!(parent, flux_mismatch, i, j)
+function correct_fluxes!(nest)
+    parent = ocean_model(nest.parent)
     grid = parent.grid
     arch = architecture(grid)
+    i, j, _ = nest.feedback_indices
     columns = KernelParameters(first(i)-1:last(i)+1, first(j)-1:last(j)+1)
+    volume_mismatch = nest.flux_mismatch.volume
 
-    for (name, mismatch) in pairs(flux_mismatch.tracers)
-        launch!(arch, grid, columns, _correct_tracer!, parent.tracers[name], grid, mismatch, flux_mismatch.volume)
-        fill!(mismatch, 0)
+    for (name, mismatch) in pairs(nest.flux_mismatch.tracers)
+        launch!(arch, grid, columns, _correct_tracer!, parent.tracers[name], grid, mismatch, volume_mismatch)
     end
 
-    launch!(arch, grid, columns, _correct_sea_level!, parent.free_surface.displacement, grid, flux_mismatch.volume)
-    fill!(flux_mismatch.volume, 0)
+    launch!(arch, grid, columns, _correct_sea_level!, parent.free_surface.displacement, grid, volume_mismatch)
 
     return nothing
 end

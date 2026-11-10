@@ -88,8 +88,9 @@ salinity_departure(model) = maximum(abs, Array(interior(model.tracers.S))[cell_m
 
 # The largest changes of the composite heat and volume, relative to the heat and to the volume
 # of the bump, and the largest departure of the salinity from uniform
-function conservation_errors(nest, models; steps)
+function conservation_errors(nest, models; steps, spin_up = Returns(nothing))
     foreach(model -> set!(model, T=temperature, S=35, u=flow, η=bump), models)
+    spin_up()
     update_state!(nest)
 
     initial_heat = composite(heat, models)
@@ -126,20 +127,6 @@ static_cases = (("a flat bottom", identity), ("a parent shelf beside a deeper ch
     @test salinity_error < 1e-11
 end
 
-z_star_cases = (("two levels with upwind advection and diffusion", diffusive_ocean, identity, (approaches,), identity, 40),
-                ("three levels", ocean, identity, (approaches, bay), identity, 20),
-                ("Earth system models", earth_system_ocean, level -> level.ocean.model, (approaches,), identity, 10),
-                ("two levels with a child shelf beside a deeper parent", ocean, identity, (approaches,), child_shelf, 20))
-
-@testset "On z-star grids, $name conserve volume and tracer" for (name, level, ocean_model, extents, immerse, steps) in z_star_cases
-    nest, levels = nested_channel(level, z_star(), extents; immerse)
-    heat_error, volume_error, salinity_error = conservation_errors(nest, ocean_model.(levels); steps)
-
-    @test heat_error < 1e-12
-    @test volume_error < 1e-12
-    @test salinity_error < 1e-11
-end
-
 # a sloping sea floor, and on the nest bumps the parent does not resolve
 sloping_bottom(λ, φ) = -30 - 10λ
 bumpy_bottom(λ, φ) = sloping_bottom(λ, φ) + 8 * sinpi(4λ) * sinpi(4φ)
@@ -157,11 +144,26 @@ function reconciled_bottoms((parent_grid, grid))
             ImmersedBoundaryGrid(grid, PartialCellBottom(bottom_height))]
 end
 
-bathymetry_cases = (("a parent shelf beside a deeper child", parent_shelf), ("reconciled bottoms", reconciled_bottoms))
+z_star_cases = (("two levels with upwind advection and diffusion", diffusive_ocean, identity, (approaches,), identity, 40),
+                ("three levels", ocean, identity, (approaches, bay), identity, 20),
+                ("Earth system models", earth_system_ocean, level -> level.ocean.model, (approaches,), identity, 10),
+                ("two levels with a child shelf beside a deeper parent", ocean, identity, (approaches,), child_shelf, 20),
+                ("two levels with a parent shelf beside a deeper child", ocean, identity, (approaches,), parent_shelf, 20),
+                ("two levels with reconciled bottoms", ocean, identity, (approaches,), reconciled_bottoms, 20))
 
-@testset "On z-star grids, two levels with $name conserve volume and heat" for (name, immerse) in bathymetry_cases
-    nest, models = nested_channel(ocean, z_star(), (approaches,); immerse)
-    heat_error, volume_error, _ = conservation_errors(nest, models; steps=20)
+@testset "On z-star grids, $name conserve volume and tracer" for (name, level, ocean_model, extents, immerse, steps) in z_star_cases
+    nest, levels = nested_channel(level, z_star(), extents; immerse)
+    heat_error, volume_error, salinity_error = conservation_errors(nest, ocean_model.(levels); steps)
+
+    @test heat_error < 1e-12
+    @test volume_error < 1e-12
+    @test salinity_error < 1e-11
+end
+
+@testset "A parent stepped alone leaves the next steps of the nest conservative" begin
+    nest, levels = nested_channel(earth_system_ocean, z_star(), (approaches,))
+    models = [level.ocean.model for level in levels]
+    heat_error, volume_error, _ = conservation_errors(nest, models; steps=5, spin_up = () -> time_step!(levels[1], 5minutes))
 
     @test heat_error < 1e-12
     @test volume_error < 1e-12

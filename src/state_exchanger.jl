@@ -43,7 +43,7 @@ Return an exchanger whose `state` holds a two-level `FieldTimeSeries` on the par
 each prognostic field of the ocean model of `parent`: `u`, `v`, `η`, the barotropic transports
 `U` and `V`, and the tracers. The levels are the parent state at the start and at the end of
 its latest time step, for a nest to interpolate between. Land nodes hold the value of the
-nearest sea node on their level.
+nearest sea node on their level, and the halos are filled from the result.
 """
 function StateExchanger(parent)
     time = parent.clock.time
@@ -61,6 +61,7 @@ function store_state!(exchanger, level)
         data = view(parent(series), :, :, :, level)
         data .= parent(field)
         data[fill.land] = data[fill.donor]
+        fill_halo_regions!(series[level])
     end
 
     return nothing

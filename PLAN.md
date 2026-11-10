@@ -844,7 +844,8 @@ sequential enough that orchestration would cost more than it saves.
       the parent, into them for the child. The fluxes are Oceananigans' own `tracer_flux_x`, `tracer_flux_y`
       (advective plus diffusive, from its yin-yang conservation fixer) with the stage's transport velocities;
       the volume flux is the centered flux of a tracer equal to one.
-    - `feed_back!` first applies the mismatch to those cells, then zeroes it, then restricts as before. The
+    - A nest step zeroes the mismatch, steps the levels, applies the mismatch to those cells and then
+      restricts as before. The
       sea level rises by the column's volume mismatch over its area. Each tracer is corrected layer by
       layer: a wet layer keeps the share of the column's volume change that z-star gives it and passes the
       rest of the volume it took upward, carrying the mean of its tracer and the next layer's; a land layer
@@ -875,8 +876,8 @@ sequential enough that orchestration would cost more than it saves.
       the box's sides closes to 7e-14 of the change for tracers on z-star (centered; WENO 5 with horizontal
       diffusion; the same over partial cells) and to 4e-14 for volume on both coordinates. This confirms the
       reading in 3.6 that only the last stage's flux enters the update.
-  - Checks. Tests: 20 assertions in the new `test/test_flux_correction.jl`; the bathymetry cases in it were
-    written by a second agent. The suite: 266 pass and 2 are marked broken, of 268 (247 and 1 of 248 before).
+  - Checks. Tests: 24 assertions in the new `test/test_flux_correction.jl`; the bathymetry cases in it were
+    written by a second agent. The suite: 270 pass and 2 are marked broken, of 272 (247 and 1 of 248 before).
     Refinement 3, `width = 2`, sponge 4 child cells, 5 minute steps.
     - Check A, composite conservation, largest departure over the run, relative to the initial tracer
       content and to the volume of the bump:
@@ -915,22 +916,51 @@ sequential enough that orchestration would cost more than it saves.
       static grid, composite tracer 4.4e-16 and volume 1.7e-15 on z-star.
     - Bottoms reconciled as in 3.4 (blend, restrict, minimum depth 10 m): composite tracer 2.2e-16 and
       volume 2.1e-15 on z-star with partial cells.
-    - **Not the correction, but measured here for the first time:** on z-star, where the parent is shallower
-      than the child at the child's open side, a uniform tracer does not stay uniform **in the child**. With
-      a parent shelf of 50 m beside a 100 m child: 4.7e-3 of 35 after one step, in the child's first column
-      inside its west side, in the layers where the parent is land; 421 of 2304 child cells are off by more
-      than 1e-9 after 20 steps, and the parent stays within 2e-11. It is the same with feedback off
-      (`width` larger than the nest) and 25 times smaller without the sponge (1.8e-4). So it belongs to the
-      one-way boundary and sponge over parent land, not to the restriction or the correction; the cause is
-      not found. Reconciled partial cells that are wet everywhere (22 to 98 m) keep salinity within
-      1.3e-13; the first reviewer's reconciled case, which reaches the minimum depth, gave 1.5e-2. A static
-      grid keeps it to 1.4e-14 in every case. This matters for the Pembrokeshire grids.
+    - **Found here and fixed, in the exchanger, not the correction:** on z-star, where the parent is shallower
+      than the child at the child's open side, a uniform tracer did not stay uniform in the child: 4.7e-3 of
+      35 after one step, in the child's first column inside its side and its bottom layer, the same with
+      feedback off, and 0.64 after 20 steps beside a parent column that is all land. Cause, traced by a
+      separate agent with runs at each link: the child's bottom node, at its moving `z`, can lie below the
+      parent's lowest cell center, which is indexed by the parent's reference coordinate, so the
+      interpolation reaches the parent's bottom halo; the land fill covered interior nodes only and under
+      parent land that halo held the masked 0, so the sponge target and the reservoir value were 34.91.
+      `store_state!` now fills the halos of each stored level after the land fill: 2.1e-14 after one step
+      and 1.2e-13 after 20 (partial cells and an all-land column the same). The z-star cases over a parent
+      shelf and over reconciled bottoms now assert uniform salinity.
+      - Left upstream: NumericalEarth's `Interpolated` boundary values and Oceananigans' `Relaxation`
+        targets query a z-star child at its `z` and index the parent by its reference coordinate. Querying
+        at the child's reference coordinate also removes the error (2.8e-14, run as an override) and an
+        offset of the size of `η` in a stratified target, which the halo fill leaves.
+      - The halos of every stored field now come from the filled interior and the stored series' own
+        boundary conditions, not from the parent's halos; a nest beside a parent's open side is not run.
     - Not conserved, and not fixed: a parent column beside the edge that is land, or about 1 m deep, under
       a 100 m child loses the volume the child sends it (error 4 to 7 times the bump's volume); the sea
       level of a land column is left alone. A nest whose grid is shallower than the parent's ocean at the
       edge (`depth = 50` of 100) is not conserved either (volume error 0.4 to 0.5 with or without the
       correction). Reconciled bottoms and a nest grid cut below its deepest column avoid both.
+  - Independent reviews. Agents ran on Opus after the first three ran on this session's model; the first
+    numerics reviewer was stopped for that reason and its finished sweeps were read from its output files.
+    - Restraint: taken: Oceananigans' `tracer_flux_x`, `tracer_flux_y`, `tracer_advecting_velocities` and
+      `add_callback!` in place of copies (source +166 lines net in `two_way_nested_model.jl`), one kernel
+      argument folded away, English names in the tracer kernel, the z-star limit in the docstring, tests on
+      the public API with a diffusive case. Not taken: ring-sized storage for the mismatch; merging the sea
+      level kernel into the tracer kernel.
+    - Numerics (second reviewer): kernels and accumulation confirmed from first principles and by runs
+      (column content to 5e-15, a uniform tracer under a sheared mismatch exact, box budgets to 5e-12,
+      NumericalEarth's default `ocean_simulation` with CATKE and WENO at 4.4e-16 and 6.1e-15, `Float32`
+      at its round-off). Found and fixed: an `EarthSystemModel` level stepped outside the nest kept
+      accumulating (two steps of the parent alone moved the ring's sea level by 4.33 m at the next
+      feedback); the mismatch is now zeroed at the start of a nest step and applied only in the step, with
+      a test. Found and not fixed: the items marked (reviewer) below.
   - Known and not fixed:
+    - (reviewer) Reconciling bottoms does not prevent a land column beside the edge: `restrict_bottom!`
+      sets the feedback region only, so a coastline crossing the edge drops the volume sent to land.
+    - (reviewer) The correction's volume can exceed a thin column's: beside a 1 m partial-cell column
+      the factor `1 + mismatch / volume` reached −0.435, after which the values are finite and wrong. A
+      mismatch of half the column's volume conserves content but overshoots the tracer's range.
+    - (reviewer) A tracer callback of the user's reaches a bare parent but not the ocean of an
+      `EarthSystemModel` parent, and never the child.
+    - (reviewer) A tracer a closure steps itself (`e` with CATKE) is corrected like any other.
     - Building a second nest on the same `EarthSystemModel` leaves the first nest's callback on its ocean.
     - The mismatch fields are full three-dimensional parent fields, one per tracer and one for volume,
       holding one ring of cells; the correction is launched over every column of the region.
