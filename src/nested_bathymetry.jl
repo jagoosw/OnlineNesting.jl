@@ -19,8 +19,11 @@ function refer_to_mean_sea_level!(bottom_height, lowest_tide; minimum_depth = 0)
     datum_height = Field{Center, Center, Nothing}(bottom_height.grid)
     set!(datum_height, lowest_tide)
 
-    height = Array(interior(bottom_height, :, :, 1)) .+ Array(interior(datum_height, :, :, 1))
-    set!(bottom_height, min.(height, ifelse.(height .< 0, -minimum_depth, 0)))
+    raw = Array(interior(bottom_height, :, :, 1))
+    correction = Array(interior(datum_height, :, :, 1))
+    was_wet = raw .< 0
+    height = raw .+ correction
+    set!(bottom_height, ifelse.(was_wet, min.(height, -minimum_depth), 0))
     fill_halo_regions!(bottom_height)
 
     return bottom_height
