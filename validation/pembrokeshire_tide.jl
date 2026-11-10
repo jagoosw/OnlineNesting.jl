@@ -185,6 +185,44 @@ for (n, (name, model)) in enumerate(pairs(levels))
             Δt / refinement^(n - 1))
 end
 
+# Surface speed and sea level on every level, with land blanked
+function surface_fields(name)
+    speed, η = surface_speed(levels[name]), sea_level(levels[name])
+    speed[.!sea[name]] .= NaN
+    η[.!sea[name]] .= NaN
+    return speed, η
+end
+
+figure = Figure(size=(1500, 1200))
+title = Observable("")
+Label(figure[0, 1:3], title; halign=:left, fontsize=17)
+
+panels = map(enumerate(keys(levels))) do (n, name)
+    grid = levels[name].grid
+    λ, φ = Array(λnodes(grid, Center())), Array(φnodes(grid, Center()))
+    aspect = AxisAspect((λ[end] - λ[1]) * cosd((φ[1] + φ[end]) / 2) / (φ[end] - φ[1]))
+    speed, η = map(Observable, surface_fields(name))
+    speed_limit = (1.5, 1.5, 2.5)[n]
+
+    axis = Axis(figure[1, n]; title = @sprintf("%s, %d × %d × %d", name, size(grid)...), aspect, ylabel = n == 1 ? "latitude (°N)" : "")
+    heatmap!(axis, λ, φ, speed; colormap=:Blues, colorrange=(0, speed_limit), nan_color=:gray80)
+    Colorbar(figure[2, n]; colormap=:Blues, limits=(0, speed_limit), vertical=false, flipaxis=false, label="surface speed (m s⁻¹)")
+
+    axis = Axis(figure[3, n]; aspect, xlabel="longitude (°E)", ylabel = n == 1 ? "latitude (°N)" : "")
+    heatmap!(axis, λ, φ, η; colormap=:balance, colorrange=(-3, 3), nan_color=:gray80)
+    Colorbar(figure[4, n]; colormap=:balance, limits=(-3, 3), vertical=false, flipaxis=false, label="sea level (m)")
+
+    (; speed, η)
+end
+
+function update_panels!()
+    for (panel, name) in zip(panels, keys(levels))
+        panel.speed[], panel.η[] = surface_fields(name)
+    end
+    title[] = @sprintf("One-way nested M2 tide after %.1f h", nest.clock.time / 3600)
+end
+
+movie = VideoStream(figure; framerate=15)
 steps = round(Int, periods * tidal_period / Δt)
 start = time()
 println()
@@ -196,6 +234,11 @@ for step in 1:steps
     for name in keys(levels), place in keys(places)
         push!(series.η[name][place], probe(sea_level(levels[name]), columns[name][place]))
         push!(series.speed[name][place], probe(surface_speed(levels[name]), columns[name][place]))
+    end
+
+    if step % 3 == 0
+        update_panels!()
+        recordframe!(movie)
     end
 
     if step % max(1, steps ÷ 12) == 0 || step == steps
@@ -226,30 +269,13 @@ for (parent, child) in ((:shelf, :approaches), (:approaches, :bay)), place in ke
 end
 
 #####
-##### Figure
+##### Movie and figure
 #####
 
-figure = Figure(size=(1500, 1200))
+save(joinpath(@__DIR__, "pembrokeshire_tide.mp4"), movie)
+update_panels!()
+
 hours = series.time ./ 3600
-
-for (n, (name, model)) in enumerate(pairs(levels))
-    λ, φ = Array(λnodes(model.grid, Center())), Array(φnodes(model.grid, Center()))
-    land = .!sea[name]
-    aspect = AxisAspect((λ[end] - λ[1]) * cosd((φ[1] + φ[end]) / 2) / (φ[end] - φ[1]))
-    title = @sprintf("%s, %d × %d × %d", name, size(model.grid)...)
-
-    axis = Axis(figure[1, n]; title, aspect, ylabel = n == 1 ? "latitude (°N)" : "")
-    speed = surface_speed(model)
-    speed[land] .= NaN
-    heatmap!(axis, λ, φ, speed; colormap=:Blues, colorrange=(0, (1.5, 1.5, 2.5)[n]), nan_color=:gray80)
-    Colorbar(figure[2, n]; colormap=:Blues, limits=(0, (1.5, 1.5, 2.5)[n]), vertical=false, flipaxis=false, label="surface speed (m s⁻¹)")
-
-    axis = Axis(figure[3, n]; aspect, xlabel="longitude (°E)", ylabel = n == 1 ? "latitude (°N)" : "")
-    η = sea_level(model)
-    η[land] .= NaN
-    heatmap!(axis, λ, φ, η; colormap=:balance, colorrange=(-3, 3), nan_color=:gray80)
-    Colorbar(figure[4, n]; colormap=:balance, limits=(-3, 3), vertical=false, flipaxis=false, label="sea level (m)")
-end
 
 sea_level_axis = Axis(figure[5, 1:3]; ylabel="sea level, St Brides Bay (m)")
 speed_axis = Axis(figure[6, 1:3]; xlabel="time (h)", ylabel="surface speed, Ramsey Sound (m s⁻¹)")
@@ -260,7 +286,4 @@ for name in keys(levels)
 end
 
 axislegend(sea_level_axis; position=:lt)
-Label(figure[0, 1:3], @sprintf("One-way nested M2 tide after %.1f h: fields at the last step, and each level at the same two places", hours[end]);
-      halign=:left, fontsize=17)
-
 save(joinpath(@__DIR__, "pembrokeshire_tide.png"), figure)
