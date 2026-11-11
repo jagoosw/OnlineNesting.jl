@@ -25,16 +25,18 @@ all_dates  = start_date:Day(1):(end_date - Day(1))
 
 variables = (:temperature, :salinity, :u_velocity, :v_velocity)
 
-for variable in variables
-    @info "Inpainting $variable ($(length(all_dates)) dates)..."
-    t₀ = time_ns()
-    for (n, date) in enumerate(all_dates)
-        metadatum = Metadatum(variable; dataset=glorys, date, region, dir=glorys_dir)
-        Field(metadatum, arch; cache_inpainted_data=true)
-        n % 50 == 0 && @printf("  %s  %d / %d\n", variable, n, length(all_dates))
+@sync for variable in variables
+    @async begin
+        @info "Inpainting $variable ($(length(all_dates)) dates)..."
+        t₀ = time_ns()
+        for (n, date) in enumerate(all_dates)
+            metadatum = Metadatum(variable; dataset=glorys, date, region, dir=glorys_dir)
+            Field(metadatum, arch; cache_inpainted_data=true)
+            n % 50 == 0 && @printf("  %s  %d / %d\n", variable, n, length(all_dates))
+        end
+        elapsed = (time_ns() - t₀) / 1e9
+        @printf("  %s done in %.0f s\n", variable, elapsed)
     end
-    elapsed = (time_ns() - t₀) / 1e9
-    @printf("  %s done in %.0f s\n", variable, elapsed)
 end
 
 @info "All inpainting cached."
