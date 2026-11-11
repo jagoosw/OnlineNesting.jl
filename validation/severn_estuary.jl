@@ -34,8 +34,8 @@ using Printf
 
 arch = CPU()
 days_to_run = isempty(ARGS) ? 30 : parse(Float64, ARGS[1])
-start_date = DateTime(2020, 1, 1)
-end_date   = DateTime(2022, 1, 1)
+start_date = DateTime(2018, 1, 1)
+end_date   = DateTime(2021, 1, 1)
 dates = (start_date, end_date)
 
 output_dir  = "/nfs/roberts/scratch/pi_ey239/js5256/severn"

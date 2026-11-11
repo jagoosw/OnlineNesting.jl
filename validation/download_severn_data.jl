@@ -25,8 +25,8 @@ using Dates: DateTime, Day
 ##### Configuration — must match severn_estuary.jl
 #####
 
-start_date = DateTime(2020, 1, 1)
-end_date   = DateTime(2022, 1, 1)
+start_date = DateTime(2018, 1, 1)
+end_date   = DateTime(2021, 1, 1)
 
 # Shelf domain with margin for GLORYS interpolation
 shelf_longitude = (-12.0, 5.0)

@@ -19,8 +19,8 @@ arch = CPU()
 glorys = GLORYSDaily()
 region = BoundingBox(longitude = (-12.5, 5.5), latitude = (45.5, 62.5))
 
-start_date = DateTime(2020, 1, 1)
-end_date   = DateTime(2022, 1, 1)
+start_date = DateTime(2018, 1, 1)
+end_date   = DateTime(2021, 1, 1)
 all_dates  = start_date:Day(1):(end_date - Day(1))
 
 variables = (:temperature, :salinity, :u_velocity, :v_velocity)
