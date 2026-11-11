@@ -1,11 +1,10 @@
 [deps]
 CDSAPI = "8a7b9de3-9c00-473e-88b4-7eccd7ef2fea"
-CairoMakie = "13f3f980-e62b-5c42-98c6-ff1f3baf88f0"
 CopernicusMarine = "cd43e856-93a3-40c8-bc9e-6146cdce14fa"
 NCDatasets = "85f8d34a-cbdd-5861-8df4-14fed0d494ab"
 NumericalEarth = "904d977b-046a-4731-8b86-9235c0d1ef02"
-Oceananigans = "9e8cae18-63c1-5223-a75c-80ca9d6e9a09"
 OnlineNesting = "96644dbe-32ff-45cb-8335-a90902b5ba9b"
+Oceananigans = "9e8cae18-63c1-5223-a75c-80ca9d6e9a09"
 ParallelTestRunner = "d3525ed8-44d0-4b2c-a655-542cee43accc"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
