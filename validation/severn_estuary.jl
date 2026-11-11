@@ -37,6 +37,7 @@ start_date = DateTime(2020, 1, 1)
 end_date   = DateTime(2022, 1, 1)
 dates = (start_date, end_date)
 
+output_dir  = "/nfs/roberts/scratch/pi_ey239/js5256/severn"
 tpxo_dir    = "/home/js5256/projects/OnlineNesting.jl/data/TPXO10_atlas_v2_nc/"
 glorys_dir = "/nfs/roberts/pi/pi_ey239/js5256/OAEMIP/data/GLORYS/"
 era5_dir    = "/nfs/roberts/pi/pi_ey239/js5256/OAEMIP/data/ERA5/"
