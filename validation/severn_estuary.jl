@@ -37,10 +37,10 @@ start_date = DateTime(2020, 1, 1)
 end_date   = DateTime(2022, 1, 1)
 dates = (start_date, end_date)
 
-tpxo_dir   = get(ENV, "TPXO_DIR",   joinpath(homedir(), "Downloads", "TPXO10_atlas_v2_nc"))
-glorys_dir = get(ENV, "GLORYS_DIR", nothing)
-era5_dir   = get(ENV, "ERA5_DIR",   nothing)
-glofas_dir = get(ENV, "GLOFAS_DIR", nothing)
+tpxo_dir   = "/home/js5256/projects/OnlineNesting.jl/data/TPXO10_atlas_v2_nc"
+glorys_dir = "/nfs/roberts/pi/pi_ey239/js5256/GLORYS/"
+era5_dir   = "/nfs/roberts/pi/pi_ey239/js5256/OAEMIP/data/ERA5/"
+glofas_dir = "/nfs/roberts/pi/pi_ey239/js5256/OAEMIP/data/GloFAS/"
 
 refinement    = 5
 width         = 3
