@@ -3,24 +3,28 @@
 ## 1. Clone and set up Oceananigans
 
 The simulation requires the open-boundary filtered-transport fix (PR #6485), which is not in
-released Oceananigans 0.117.2. On your laptop the `[sources]` pin in `Project.toml` points to a
-local patched copy; on bouchet you need to recreate it:
+released Oceananigans 0.117.2. Check out the PR branch and point `Project.toml` at it:
 
 ```bash
 cd ~/Documents
-git clone https://github.com/CliMA/Oceananigans.jl.git Oceananigans-0.117.2-open-boundary-fix
-cd Oceananigans-0.117.2-open-boundary-fix
-git checkout v0.117.2
-# Apply the filtered-transport fix from PR #6485:
-git cherry-pick <commit-hash>   # or apply the diff manually
+git clone https://github.com/CliMA/Oceananigans.jl.git Oceananigans-open-boundary-fix
+cd Oceananigans-open-boundary-fix
+git checkout jsw/open-boundary-filtered-transport
 ```
 
-Then edit `OnlineNesting.jl/Project.toml` so the `[sources]` path points to wherever you put it
-on bouchet:
+Then edit `OnlineNesting.jl/Project.toml` so the `[sources]` path points to the checkout:
 
 ```toml
 [sources]
-Oceananigans = {path = "/home/jago/Documents/Oceananigans-0.117.2-open-boundary-fix"}
+Oceananigans = {path = "/home/jago/Documents/Oceananigans-open-boundary-fix"}
+```
+
+If the branch fails to resolve (e.g. a DocStringExtensions compat mismatch), fall back to
+cherry-picking the fix onto the release tag:
+
+```bash
+git checkout v0.117.2
+git cherry-pick <commit-hash-from-PR-6485>
 ```
 
 ## 2. Data
