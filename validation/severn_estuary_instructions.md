@@ -32,9 +32,34 @@ git cherry-pick <commit-hash-from-PR-6485>
 | Dataset | How to get it | Env var |
 |---------|--------------|---------|
 | TPXO10 atlas | Copy from laptop or request at https://www.tpxo.net | `TPXO_DIR` (default `~/Downloads/TPXO10_atlas_v2_nc/`) |
-| GLORYS daily | Auto-downloads via Copernicus Marine credentials | `GLORYS_DIR` (optional cache dir) |
-| ERA5 hourly | Already on bouchet, or auto-downloads | `ERA5_DIR` (point to the shared cache) |
-| GloFAS reanalysis | Optional; download via CDS API or copy | `GLOFAS_DIR` (omit to skip rivers) |
+| GLORYS daily | Download script or auto-downloads on first run | `NUMERICALEARTH_DATA_DIRECTORY` |
+| ERA5 hourly | Auto-downloads on first run | `ERA5_DIR` (point to a shared cache) |
+| GloFAS reanalysis | Download script (optional; omit to skip rivers) | `NUMERICALEARTH_DATA_DIRECTORY` |
+
+### Download GLORYS and GloFAS
+
+The download script fetches GLORYS reanalysis (T, S, u, v, η for the shelf boundary) and
+GloFAS river discharge (Severn, Wye, Usk, Avon) via NumericalEarth's data extensions. Both
+`CopernicusMarine` and `CDSAPI` are Julia packages — no system tools needed.
+
+Set up credentials first:
+
+```bash
+# Copernicus Marine (GLORYS) — run once:
+julia --project=test -e 'using CopernicusMarine; CopernicusMarine.login()'
+
+# CDS API (GloFAS) — create ~/.cdsapirc with your key from
+# https://cds.climate.copernicus.eu/how-to-api
+```
+
+Then download (set `NUMERICALEARTH_DATA_DIRECTORY` to a shared path on the cluster):
+
+```bash
+NUMERICALEARTH_DATA_DIRECTORY=/path/to/data \
+    julia --project=test validation/download_severn_data.jl
+```
+
+Already-downloaded files are skipped, so it can be rerun after interruptions.
 
 ### TPXO10
 
@@ -46,42 +71,17 @@ M2, S2, N2, K2, K1, O1, P1, Q1, Mf, Mm:
 rsync -av ~/Downloads/TPXO10_atlas_v2_nc/ bouchet:Downloads/TPXO10_atlas_v2_nc/
 ```
 
-### GLORYS
-
-Set Copernicus Marine credentials before running:
-
-```bash
-export COPERNICUSMARINE_SERVICE_USERNAME="your-username"
-export COPERNICUSMARINE_SERVICE_PASSWORD="your-password"
-```
-
-NumericalEarth downloads GLORYS on first use. To cache it:
-
-```bash
-export GLORYS_DIR="/path/to/glorys/cache"
-```
-
 ### ERA5
 
-If ERA5 is already on bouchet:
+ERA5 is downloaded automatically when the simulation runs. Point to a shared cache if available:
 
 ```bash
 export ERA5_DIR="/path/to/era5/cache"
 ```
 
-### GloFAS (optional — river freshwater forcing)
-
-GloFAS provides freshwater discharge for the Severn, Wye, Usk and Avon rivers. Without it the
-simulation still runs but has no river forcing. To enable it, download GloFAS reanalysis data
-(needs EWDS credentials from https://cds.climate.copernicus.eu) and point to the cache:
-
-```bash
-export GLOFAS_DIR="/path/to/glofas/cache"
-```
-
 ## 3. Environment
 
-Instantiate the test environment (which has the CopernicusMarine and ERA5 extensions):
+Instantiate the test environment (which has CopernicusMarine, CDSAPI and ERA5 extensions):
 
 ```bash
 cd /path/to/OnlineNesting.jl
