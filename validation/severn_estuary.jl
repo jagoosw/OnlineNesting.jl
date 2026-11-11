@@ -20,7 +20,7 @@ using Oceananigans
 using Oceananigans.Units
 using Oceananigans.BoundaryConditions: TracerReservoir, tidal_boundary_conditions
 using Oceananigans.Fields: interpolate
-using Oceananigans.Grids: Open, MutableVerticalDiscretization, λnodes, φnodes
+using Oceananigans.Grids: Open, MutableVerticalDiscretization
 using NumericalEarth
 using NumericalEarth.DataWrangling: BoundingBox, GLORYSDaily, Metadata, MetadataSet
 using NumericalEarth.NestedModels: Interpolated
@@ -37,10 +37,12 @@ start_date = DateTime(2020, 1, 1)
 end_date   = DateTime(2022, 1, 1)
 dates = (start_date, end_date)
 
-tpxo_dir   = "/home/js5256/projects/OnlineNesting.jl/data/TPXO10_atlas_v2_nc"
-glorys_dir = "/nfs/roberts/pi/pi_ey239/js5256/GLORYS/"
-era5_dir   = "/nfs/roberts/pi/pi_ey239/js5256/OAEMIP/data/ERA5/"
-glofas_dir = "/nfs/roberts/pi/pi_ey239/js5256/OAEMIP/data/GloFAS/"
+tpxo_dir    = "/home/js5256/projects/OnlineNesting.jl/data/TPXO10_atlas_v2_nc/"
+glorys_dir = "/nfs/roberts/pi/pi_ey239/js5256/OAEMIP/data/GLORYS/"
+era5_dir    = "/nfs/roberts/pi/pi_ey239/js5256/OAEMIP/data/ERA5/"
+glofas_dir  = "/nfs/roberts/pi/pi_ey239/js5256/OAEMIP/data/GloFAS/"
+emodnet_dir = "/home/js5256/projects/OnlineNesting.jl/data/EMODnet/"
+mkpath(output_dir)
 
 refinement    = 5
 width         = 3
@@ -97,8 +99,8 @@ tpxo = TPXO10Atlas(; dir=tpxo_dir)
 lat_field = lowest_astronomical_tide(tpxo, bristol_grid)
 lowest_tide(λ, φ) = interpolate((mod(λ, 360), φ), lat_field)
 
-function emodnet_bottom_height(grid; interpolation_passes, major_basins=Inf, lat_correction=lowest_tide)
-    metadatum = Metadatum(:bottom_height; dataset=EMODnet2024(), region=BoundingBox(grid))
+function emodnet_bottom_height(grid; interpolation_passes, major_basins=Inf, lat_correction=lowest_tide, dir=emodnet_dir)
+    metadatum = Metadatum(:bottom_height; dataset=EMODnet2024(), region=BoundingBox(grid), dir)
     bottom_height = regrid_bathymetry(grid, metadatum; interpolation_passes, major_basins)
     return refer_to_mean_sea_level!(bottom_height, lat_correction; minimum_depth)
 end
@@ -198,17 +200,10 @@ severn_radiation = ERA5PrescribedRadiation(arch; start_date, end_date,
 ##### GloFAS river routing on the Severn (optional; set GLOFAS_DIR to enable)
 #####
 
-severn_land = nothing
-severn_river_routing = nothing
-
-if !isnothing(glofas_dir)
-    println("Setting up GloFAS river routing on the Severn grid...")
-    severn_land = GloFASPrescribedLand(severn_grid;
-        start_date, end_date, region=BoundingBox(severn_grid), dir=glofas_dir)
+severn_land = GloFASPrescribedLand(severn_grid;
+                                   start_date, end_date, 
+                                   region=BoundingBox(severn_grid), dir=glofas_dir)
     severn_river_routing = severn_land.river_routing
-else
-    println("Skipping river routing (set GLOFAS_DIR to enable)")
-end
 
 #####
 ##### Passive dye tracer released from Hinkley Point
@@ -264,107 +259,69 @@ inner_nest = TwoWayNestedModel(bristol_model, severn_model, severn_exchanger; wi
 nest       = TwoWayNestedModel(shelf_model, inner_nest, bristol_exchanger; width)
 
 #####
-##### Diagnostics: tide gauge locations
+##### Simulation
 #####
 
-avonmouth     = (-2.71, 51.51)
-newport       = (-3.00, 51.55)
-mumbles       = (-3.98, 51.57)
-ilfracombe    = (-4.11, 51.21)
-hinkley_point = (-3.13, 51.21)
-places = (; avonmouth, newport, mumbles, ilfracombe, hinkley_point)
+stop_time = days_to_run * days
+simulation = Simulation(nest; Δt, stop_time)
 
-function find_column(grid, sea_mask, (λ, φ))
-    λᶠ, φᶠ = Array(λnodes(grid, Face())), Array(φnodes(grid, Face()))
-    (λᶠ[1] ≤ λ < λᶠ[end] && φᶠ[1] ≤ φ < φᶠ[end]) || return nothing
-    i, j = searchsortedlast(λᶠ, λ), searchsortedlast(φᶠ, φ)
-    return sea_mask[i, j] ? (i, j) : nothing
+#####
+##### Output writers: surface fields every hour, 3D fields every day
+#####
+
+for (name, ocean) in pairs((; shelf=shelf_ocean, bristol=bristol_ocean, severn=severn_ocean))
+    model = ocean.model
+    Nz_model = size(model.grid, 3)
+
+    outputs = (; η = model.free_surface.displacement,
+                 T = model.tracers.T,
+                 S = model.tracers.S,
+                 u = model.velocities.u,
+                 v = model.velocities.v,
+                 dye = model.tracers.dye)
+
+    simulation.output_writers[Symbol(name, :_surface)] = JLD2Writer(model, outputs;
+        filename = joinpath(output_dir, "$(name)_surface"),
+        schedule = TimeInterval(1hours),
+        indices = (:, :, Nz_model),
+        with_halos = false,
+        overwrite_files = true)
+#=
+    simulation.output_writers[Symbol(name, :_fields)] = JLD2Writer(model, outputs;
+        filename = joinpath(output_dir, "$(name)_fields"),
+        schedule = TimeInterval(1days),
+        with_halos = false,
+        overwrite_files = true)=#
 end
 
-grids  = (shelf=shelf_grid, bristol=bristol_grid, severn=severn_grid)
-models = (shelf=shelf_ocean.model, bristol=bristol_ocean.model, severn=severn_ocean.model)
+#####
+##### Progress
+#####
 
-columns = map((g, s) -> map(p -> find_column(g, s, p), places), values(grids), values(sea))
-columns = NamedTuple{keys(grids)}(columns)
+wall_clock = Ref(time_ns())
 
-series = (time  = Float64[],
-          η     = map(_ -> map(_ -> Float64[], places), grids),
-          speed = map(_ -> map(_ -> Float64[], places), grids))
-
-function record!(series, models, columns, time)
-    push!(series.time, time)
-    for name in keys(models)
-        model = models[name]
-        η_data = Array(interior(model.free_surface.displacement, :, :, 1))
-        Nz_model = size(model.grid, 3)
-        u_data = Array(interior(model.velocities.u, :, :, Nz_model))
-        v_data = Array(interior(model.velocities.v, :, :, Nz_model))
-        speed_data = sqrt.(((u_data[1:end-1, :] .+ u_data[2:end, :]) ./ 2) .^ 2 .+
-                           ((v_data[:, 1:end-1] .+ v_data[:, 2:end]) ./ 2) .^ 2)
-        for place in keys(places)
-            col = columns[name][place]
-            push!(series.η[name][place],     isnothing(col) ? NaN : η_data[col...])
-            push!(series.speed[name][place], isnothing(col) ? NaN : speed_data[col...])
-        end
-    end
+function progress(sim)
+    elapsed = (time_ns() - wall_clock[]) / 1e9
+    wall_clock[] = time_ns()
+    u = severn_ocean.model.velocities.u
+    @printf("  day %7.2f / %.0f  wall: %.1f s  max|u| (severn): %.2f m/s\n",
+            sim.model.clock.time / days, days_to_run, elapsed, maximum(abs, u))
 end
+
+simulation.callbacks[:progress] = Callback(progress, IterationInterval(100))
 
 #####
 ##### Run
 #####
 
-stop_time = days_to_run * days
+grids = (; shelf=shelf_grid, bristol=bristol_grid, severn=severn_grid)
 steps = ceil(Int, stop_time / Δt)
-record_interval = max(1, steps ÷ 1000)
-
-println("Running the Severn Estuary case for $(days_to_run) days, Δt = $(round(Δt, digits=1)) s ($(steps) shelf steps)")
-for name in keys(grids)
-    g = grids[name]
-    idx = findfirst(==(name), keys(grids))
+@printf("Severn Estuary: %.0f days, Δt = %.1f s (%d shelf steps)\n", days_to_run, Δt, steps)
+for (name, grid) in pairs(grids)
     @printf("  %-12s %3d × %3d × %d, %2.0f%% sea\n",
-            name, size(g)..., 100 * count(values(sea)[idx]) / length(values(sea)[idx]))
+            name, size(grid)..., 100 * count(sea[name]) / length(sea[name]))
 end
 
-for step in 1:steps
-    time_step!(nest, Δt)
+run!(simulation)
 
-    if step % record_interval == 0
-        record!(series, models, columns, nest.parent.clock.time)
-        t_days = nest.parent.clock.time / days
-        @printf("\r  day %7.1f / %7.1f", t_days, days_to_run)
-    end
-end
-println()
-
-#####
-##### Report agreement between levels
-#####
-
-function report_agreement(series, places)
-    for place in keys(places)
-        println("  $(place):")
-        for (parent_name, child_name) in ((:shelf, :bristol), (:bristol, :severn))
-            η_parent = series.η[parent_name][place]
-            η_child  = series.η[child_name][place]
-            if !any(isnan, η_child) && !any(isnan, η_parent)
-                rms = sqrt(sum((η_parent .- η_child).^2) / length(η_parent))
-                @printf("    η %s vs %s: range %.2f vs %.2f m, rms difference %.4f m\n",
-                        parent_name, child_name,
-                        maximum(η_parent) - minimum(η_parent),
-                        maximum(η_child) - minimum(η_child), rms)
-            end
-            s_parent = series.speed[parent_name][place]
-            s_child  = series.speed[child_name][place]
-            if !any(isnan, s_child) && !any(isnan, s_parent)
-                @printf("    speed %s vs %s: peak %.2f vs %.2f m/s\n",
-                        parent_name, child_name,
-                        maximum(s_parent), maximum(s_child))
-            end
-        end
-    end
-end
-
-println("\nAgreement between levels:")
-report_agreement(series, places)
-
-println("\nDone.")
+println("Done. Output in $(output_dir)")
