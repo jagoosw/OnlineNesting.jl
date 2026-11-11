@@ -179,20 +179,14 @@ set!(shelf_ocean.model, T = Metadatum(:temperature; glorys_init_kw...),
 
 era5_kw = isnothing(era5_dir) ? (;) : (; dir=era5_dir)
 
-shelf_atmosphere = ERA5PrescribedAtmosphere(arch; start_date, end_date,
-    region=BoundingBox(shelf_grid), era5_kw...)
-shelf_radiation = ERA5PrescribedRadiation(arch; start_date, end_date,
-    region=BoundingBox(shelf_grid), era5_kw...)
+shelf_atmosphere = ERA5PrescribedAtmosphere(arch; start_date, end_date, era5_kw...)
+shelf_radiation  = ERA5PrescribedRadiation(arch;  start_date, end_date, era5_kw...)
 
-bristol_atmosphere = ERA5PrescribedAtmosphere(arch; start_date, end_date,
-    region=BoundingBox(bristol_grid), era5_kw...)
-bristol_radiation = ERA5PrescribedRadiation(arch; start_date, end_date,
-    region=BoundingBox(bristol_grid), era5_kw...)
+bristol_atmosphere = ERA5PrescribedAtmosphere(arch; start_date, end_date, era5_kw...)
+bristol_radiation  = ERA5PrescribedRadiation(arch;  start_date, end_date, era5_kw...)
 
-severn_atmosphere = ERA5PrescribedAtmosphere(arch; start_date, end_date,
-    region=BoundingBox(severn_grid), era5_kw...)
-severn_radiation = ERA5PrescribedRadiation(arch; start_date, end_date,
-    region=BoundingBox(severn_grid), era5_kw...)
+severn_atmosphere = ERA5PrescribedAtmosphere(arch; start_date, end_date, era5_kw...)
+severn_radiation  = ERA5PrescribedRadiation(arch;  start_date, end_date, era5_kw...)
 
 #####
 ##### GloFAS river routing on the Severn (optional; set GLOFAS_DIR to enable)
