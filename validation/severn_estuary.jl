@@ -172,10 +172,10 @@ tracers = (:T, :S, :dye)
 shelf_ocean = ocean_simulation(shelf_grid; tracers,
     boundary_conditions=shelf_boundary_conditions, warn=false)
 
-initial_temperature(z) = 10 + 8 * exp(z / 50)
-initial_salinity(z) = 35.0 + 0.1 * exp(z / 100)
-set!(shelf_ocean.model, T = (λ, φ, z) -> initial_temperature(z),
-                         S = (λ, φ, z) -> initial_salinity(z))
+glorys_init_kw = (; dataset=glorys, date=start_date, region=shelf_region)
+isnothing(glorys_dir) || (glorys_init_kw = merge(glorys_init_kw, (; dir=glorys_dir)))
+set!(shelf_ocean.model, T = Metadatum(:temperature; glorys_init_kw...),
+                        S = Metadatum(:salinity;    glorys_init_kw...))
 
 #####
 ##### ERA5 atmosphere and radiation per level
@@ -231,8 +231,8 @@ bristol_bcs       = nested_boundary_conditions(bristol_exchanger, bristol_grid)
 
 bristol_ocean = ocean_simulation(bristol_grid; tracers,
     boundary_conditions=bristol_bcs, forcing=bristol_sponge, warn=false)
-set!(bristol_ocean.model, T = (λ, φ, z) -> initial_temperature(z),
-                           S = (λ, φ, z) -> initial_salinity(z))
+set!(bristol_ocean.model, T = Metadatum(:temperature; glorys_init_kw...),
+                          S = Metadatum(:salinity;    glorys_init_kw...))
 
 bristol_model = OceanOnlyModel(bristol_ocean;
     atmosphere=bristol_atmosphere, radiation=bristol_radiation)
@@ -246,8 +246,8 @@ severn_ocean = ocean_simulation(severn_grid; tracers,
     boundary_conditions=severn_bcs,
     forcing=merge(severn_sponge, (; dye=hinkley_dye)),
     river_routing=severn_river_routing, warn=false)
-set!(severn_ocean.model, T = (λ, φ, z) -> initial_temperature(z),
-                          S = (λ, φ, z) -> initial_salinity(z))
+set!(severn_ocean.model, T = Metadatum(:temperature; glorys_init_kw...),
+                          S = Metadatum(:salinity;    glorys_init_kw...))
 
 severn_model = OceanOnlyModel(severn_ocean;
     atmosphere=severn_atmosphere, radiation=severn_radiation,
