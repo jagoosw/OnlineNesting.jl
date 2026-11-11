@@ -12,8 +12,8 @@
 # CDS credentials (GloFAS): create ~/.cdsapirc with your CDS API key from
 #   https://cds.climate.copernicus.eu, and accept the GloFAS licence there.
 
-data_directory = get(ENV, "NUMERICALEARTH_DATA_DIRECTORY", nothing)
-isnothing(data_directory) || (ENV["NUMERICALEARTH_DATA_DIRECTORY"] = data_directory)
+data_directory = get(ENV, "NUMERICALEARTH_DATA_DIRECTORY", "/nfs/roberts/pi/pi_ey239/js5256/OAEMIP/data")
+ENV["NUMERICALEARTH_DATA_DIRECTORY"] = data_directory
 
 using NumericalEarth
 using CopernicusMarine
