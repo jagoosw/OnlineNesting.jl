@@ -1019,6 +1019,30 @@ sequential enough that orchestration would cost more than it saves.
   - Departures: `GloFASPrescribedLand` import is assumed exported from `NumericalEarth` (like
     `ERA5PrescribedAtmosphere`); verify on first run.
 
+- 2026-11-11, session I (three-level Severn grid design and script update):
+  - **Grid configuration settled** through iterative trimming of domain sizes and performance
+    estimation on a single H100. The three-level hierarchy:
+    - **Shelf** (340×320×50, ~3.5 km): NW European shelf, (-12, 5)×(46, 62), TPXO + GLORYS BCs.
+    - **Bristol Channel** (350×140×50, ~690 m): (-5.5, -2.0)×(50.8, 52.2), nested from shelf.
+    - **Severn Estuary** (~500×325×30, ~140 m): (-3.5, -2.5)×(51.1, 51.75), nested from Bristol.
+    Cost: ~1M wet-column-steps per shelf step (shelf 7%, Bristol 8%, Severn 85%). Estimated ~5 SYPD.
+  - **`src/nested_timestep.jl`** (new): `minimum_horizontal_spacing(grid)` for
+    `LatitudeLongitudeGrid` and `RectilinearGrid`; `nested_timestep(grids, maximum_velocities)`
+    computes CFL-limited timesteps for a nested hierarchy with fixed integer subcycling.
+    Added to exports and includes in `src/OnlineNesting.jl`.
+  - **`validation/severn_estuary.jl`:** rewritten from two-level to three-level. Key changes:
+    shelf is now the full NW European shelf (not just Bristol Channel); Bristol Channel is the
+    intermediate domain; Severn is the innermost. LAT computed on bristol_grid (not shelf_grid)
+    due to the `atlas_window` 0° longitude wrapping bug. Timestep computed via `nested_timestep`.
+    Passive dye tracer released from Hinkley Point on the Severn grid.
+  - **`validation/severn_bathymetry.jl`:** rewritten for three levels with per-level color ranges,
+    resolution and wet-fraction annotations in titles, and pairwise column-volume checks.
+  - **`validation/severn_estuary_instructions.md`:** updated for the three-level setup with
+    performance estimates and grid descriptions.
+  - Checks: syntax-checks pass; not run (requires TPXO atlas, GLORYS credentials, ERA5 data).
+  - Departures: shelf gets `lat_correction=0` (no LAT correction) because the shelf grid spans 0°
+    longitude; the shelf is deep enough that the LAT correction (~few metres) is negligible.
+
 ## 7. Risks
 
 - **Open-boundary consistency with several layers.** The barotropic and baroclinic normal

@@ -1,7 +1,8 @@
-# Two-level nested simulation: Bristol Channel shelf → Severn Estuary.
+# Three-level nested simulation: NW European shelf → Bristol Channel → Severn Estuary.
 #
-# The estuary domain extends east of Gloucester so that all rivers (Severn, Wye,
-# Usk, Avon) enter through the interior, not through a lateral boundary.
+# The innermost domain resolves the Severn Estuary at ~140 m from Llantwit Major
+# to the tidal limit east of Gloucester. The middle domain covers the Bristol
+# Channel at ~690 m and the outer domain the NW European shelf at ~3.5 km.
 #
 # Prerequisites:
 #   - TPXO10 atlas files in TPXO_DIR (licensed; request at https://www.tpxo.net)
@@ -58,46 +59,65 @@ z = MutableVerticalDiscretization(z_faces)
 #####
 
 shelf_grid = LatitudeLongitudeGrid(arch;
-    size = (140, 90, Nz),
-    longitude = (-7.0, -2.0),
-    latitude = (50.5, 52.5),
+    size = (340, 320, Nz),
+    longitude = (-12.0, 5.0),
+    latitude = (46.0, 62.0),
     halo = (7, 7, 7),
     topology = (Open, Open, Bounded),
     z)
 
-# The nest extends east of Gloucester (-2.25°W) so the Severn's tidal limit is interior
-estuary_grid = nested_grid(shelf_grid;
-    longitude = (-5.0, -2.15),
-    latitude = (51.1, 52.0),
+bristol_grid = nested_grid(shelf_grid;
+    longitude = (-5.5, -2.0),
+    latitude = (50.8, 52.2),
+    depth = 250,
+    refinement)
+
+severn_grid = nested_grid(bristol_grid;
+    longitude = (-3.5, -2.5),
+    latitude = (51.1, 51.75),
     depth = 100,
     refinement)
+
+#####
+##### Timestep from CFL constraints (before immersing the grids)
+#####
+
+result = nested_timestep(
+    (shelf_grid, bristol_grid, severn_grid),
+    (0.5, 1.0, 2.0))
+Δt = result.timesteps[1]
 
 #####
 ##### Bathymetry (EMODnet referenced to MSL via TPXO lowest astronomical tide)
 #####
 
 tpxo = TPXO10Atlas(; dir=tpxo_dir)
-lat_field = lowest_astronomical_tide(tpxo, shelf_grid)
+# LAT computed on bristol_grid: the shelf grid spans 0° longitude,
+# triggering the atlas_window wrapping bug in TPXO interpolation
+lat_field = lowest_astronomical_tide(tpxo, bristol_grid)
 lowest_tide(λ, φ) = interpolate((mod(λ, 360), φ), lat_field)
 
-function emodnet_bottom_height(grid; interpolation_passes, major_basins=Inf)
+function emodnet_bottom_height(grid; interpolation_passes, major_basins=Inf, lat_correction=lowest_tide)
     metadatum = Metadatum(:bottom_height; dataset=EMODnet2024(), region=BoundingBox(grid))
     bottom_height = regrid_bathymetry(grid, metadatum; interpolation_passes, major_basins)
-    return refer_to_mean_sea_level!(bottom_height, lowest_tide; minimum_depth)
+    return refer_to_mean_sea_level!(bottom_height, lat_correction; minimum_depth)
 end
 
-shelf_bottom   = emodnet_bottom_height(shelf_grid;   interpolation_passes=4, major_basins=1)
-estuary_bottom = emodnet_bottom_height(estuary_grid; interpolation_passes=2)
+shelf_bottom   = emodnet_bottom_height(shelf_grid;   interpolation_passes=4, major_basins=1, lat_correction=0)
+bristol_bottom = emodnet_bottom_height(bristol_grid;  interpolation_passes=2)
+severn_bottom  = emodnet_bottom_height(severn_grid;   interpolation_passes=1)
 
-blend_parent_bottom!(estuary_bottom, shelf_bottom; width, minimum_depth)
-restrict_bottom!(shelf_bottom, estuary_bottom; width, minimum_depth)
+blend_parent_bottom!(severn_bottom,  bristol_bottom; width, minimum_depth)
+restrict_bottom!(bristol_bottom, severn_bottom;  width, minimum_depth)
+restrict_bottom!(shelf_bottom,   bristol_bottom; width, minimum_depth)
 
 sea = map(b -> Array(interior(b, :, :, 1)) .< 0,
-          (shelf = shelf_bottom, estuary = estuary_bottom))
+          (shelf = shelf_bottom, bristol = bristol_bottom, severn = severn_bottom))
 
 immersed(grid, bottom) = ImmersedBoundaryGrid(grid, PartialCellBottom(Array(interior(bottom, :, :, 1))))
-shelf_grid, estuary_grid =
-    immersed.((shelf_grid, estuary_grid), (shelf_bottom, estuary_bottom))
+shelf_grid, bristol_grid, severn_grid =
+    immersed.((shelf_grid, bristol_grid, severn_grid),
+              (shelf_bottom, bristol_bottom, severn_bottom))
 
 #####
 ##### Tidal forcing on the shelf boundary
@@ -143,7 +163,7 @@ shelf_boundary_conditions = (
 ##### Ocean simulations (CATKE closure, WENO advection, SplitRungeKutta3)
 #####
 
-tracers = (:T, :S)
+tracers = (:T, :S, :dye)
 
 shelf_ocean = ocean_simulation(shelf_grid; tracers,
     boundary_conditions=shelf_boundary_conditions, warn=false)
@@ -164,54 +184,84 @@ shelf_atmosphere = ERA5PrescribedAtmosphere(arch; start_date, end_date,
 shelf_radiation = ERA5PrescribedRadiation(arch; start_date, end_date,
     region=BoundingBox(shelf_grid), era5_kw...)
 
-estuary_atmosphere = ERA5PrescribedAtmosphere(arch; start_date, end_date,
-    region=BoundingBox(estuary_grid), era5_kw...)
-estuary_radiation = ERA5PrescribedRadiation(arch; start_date, end_date,
-    region=BoundingBox(estuary_grid), era5_kw...)
+bristol_atmosphere = ERA5PrescribedAtmosphere(arch; start_date, end_date,
+    region=BoundingBox(bristol_grid), era5_kw...)
+bristol_radiation = ERA5PrescribedRadiation(arch; start_date, end_date,
+    region=BoundingBox(bristol_grid), era5_kw...)
+
+severn_atmosphere = ERA5PrescribedAtmosphere(arch; start_date, end_date,
+    region=BoundingBox(severn_grid), era5_kw...)
+severn_radiation = ERA5PrescribedRadiation(arch; start_date, end_date,
+    region=BoundingBox(severn_grid), era5_kw...)
 
 #####
-##### GloFAS river routing on the estuary (optional; set GLOFAS_DIR to enable)
+##### GloFAS river routing on the Severn (optional; set GLOFAS_DIR to enable)
 #####
 
-estuary_land = nothing
-estuary_river_routing = nothing
+severn_land = nothing
+severn_river_routing = nothing
 
 if !isnothing(glofas_dir)
-    println("Setting up GloFAS river routing on the estuary grid...")
-    estuary_land = GloFASPrescribedLand(estuary_grid;
-        start_date, end_date, region=BoundingBox(estuary_grid), dir=glofas_dir)
-    estuary_river_routing = estuary_land.river_routing
+    println("Setting up GloFAS river routing on the Severn grid...")
+    severn_land = GloFASPrescribedLand(severn_grid;
+        start_date, end_date, region=BoundingBox(severn_grid), dir=glofas_dir)
+    severn_river_routing = severn_land.river_routing
 else
     println("Skipping river routing (set GLOFAS_DIR to enable)")
 end
 
 #####
-##### EarthSystemModel per level (decision D3)
+##### Passive dye tracer released from Hinkley Point
+#####
+
+@inline hinkley_dye_source(λ, φ, z, t, p) =
+    exp(-((λ - p.λ₀)^2 + (φ - p.φ₀)^2) / (2 * p.σ²)) * exp(z / p.depth_scale)
+
+hinkley_dye = Forcing(hinkley_dye_source,
+    parameters = (λ₀ = -3.13, φ₀ = 51.21, σ² = 0.005^2, depth_scale = 5.0))
+
+#####
+##### EarthSystemModel per level
 #####
 
 shelf_model = OceanOnlyModel(shelf_ocean;
     atmosphere=shelf_atmosphere, radiation=shelf_radiation)
 
-estuary_exchanger = StateExchanger(shelf_model)
-estuary_sponge    = nested_forcings(estuary_exchanger, estuary_grid;
+bristol_exchanger = StateExchanger(shelf_model)
+bristol_sponge    = nested_forcings(bristol_exchanger, bristol_grid;
     rate=1/1hour, width=refinement*width)
-estuary_bcs       = nested_boundary_conditions(estuary_exchanger, estuary_grid)
+bristol_bcs       = nested_boundary_conditions(bristol_exchanger, bristol_grid)
 
-estuary_ocean = ocean_simulation(estuary_grid; tracers,
-    boundary_conditions=estuary_bcs, forcing=estuary_sponge,
-    river_routing=estuary_river_routing, warn=false)
-set!(estuary_ocean.model, T = (λ, φ, z) -> initial_temperature(z),
+bristol_ocean = ocean_simulation(bristol_grid; tracers,
+    boundary_conditions=bristol_bcs, forcing=bristol_sponge, warn=false)
+set!(bristol_ocean.model, T = (λ, φ, z) -> initial_temperature(z),
                            S = (λ, φ, z) -> initial_salinity(z))
 
-estuary_model = OceanOnlyModel(estuary_ocean;
-    atmosphere=estuary_atmosphere, radiation=estuary_radiation,
-    land=estuary_land)
+bristol_model = OceanOnlyModel(bristol_ocean;
+    atmosphere=bristol_atmosphere, radiation=bristol_radiation)
+
+severn_exchanger = StateExchanger(bristol_model)
+severn_sponge    = nested_forcings(severn_exchanger, severn_grid;
+    rate=1/1hour, width=refinement*width)
+severn_bcs       = nested_boundary_conditions(severn_exchanger, severn_grid)
+
+severn_ocean = ocean_simulation(severn_grid; tracers,
+    boundary_conditions=severn_bcs,
+    forcing=merge(severn_sponge, (; dye=hinkley_dye)),
+    river_routing=severn_river_routing, warn=false)
+set!(severn_ocean.model, T = (λ, φ, z) -> initial_temperature(z),
+                          S = (λ, φ, z) -> initial_salinity(z))
+
+severn_model = OceanOnlyModel(severn_ocean;
+    atmosphere=severn_atmosphere, radiation=severn_radiation,
+    land=severn_land)
 
 #####
-##### Assemble the two-level nested model
+##### Assemble the three-level nested model
 #####
 
-nest = TwoWayNestedModel(shelf_model, estuary_model, estuary_exchanger; width)
+inner_nest = TwoWayNestedModel(bristol_model, severn_model, severn_exchanger; width)
+nest       = TwoWayNestedModel(shelf_model, inner_nest, bristol_exchanger; width)
 
 #####
 ##### Diagnostics: tide gauge locations
@@ -221,7 +271,8 @@ avonmouth     = (-2.71, 51.51)
 newport       = (-3.00, 51.55)
 mumbles       = (-3.98, 51.57)
 ilfracombe    = (-4.11, 51.21)
-places = (; avonmouth, newport, mumbles, ilfracombe)
+hinkley_point = (-3.13, 51.21)
+places = (; avonmouth, newport, mumbles, ilfracombe, hinkley_point)
 
 function find_column(grid, sea_mask, (λ, φ))
     λᶠ, φᶠ = Array(λnodes(grid, Face())), Array(φnodes(grid, Face()))
@@ -230,8 +281,8 @@ function find_column(grid, sea_mask, (λ, φ))
     return sea_mask[i, j] ? (i, j) : nothing
 end
 
-grids  = (shelf=shelf_grid, estuary=estuary_grid)
-models = (shelf=shelf_ocean.model, estuary=estuary_ocean.model)
+grids  = (shelf=shelf_grid, bristol=bristol_grid, severn=severn_grid)
+models = (shelf=shelf_ocean.model, bristol=bristol_ocean.model, severn=severn_ocean.model)
 
 columns = map((g, s) -> map(p -> find_column(g, s, p), places), values(grids), values(sea))
 columns = NamedTuple{keys(grids)}(columns)
@@ -262,12 +313,11 @@ end
 ##### Run
 #####
 
-Δt = shelf_ocean.Δt
 stop_time = days_to_run * days
 steps = ceil(Int, stop_time / Δt)
 record_interval = max(1, steps ÷ 1000)
 
-println("Running the Severn Estuary case for $(days_to_run) days, Δt = $(Δt) s ($(steps) shelf steps)")
+println("Running the Severn Estuary case for $(days_to_run) days, Δt = $(round(Δt, digits=1)) s ($(steps) shelf steps)")
 for name in keys(grids)
     g = grids[name]
     idx = findfirst(==(name), keys(grids))
@@ -291,22 +341,25 @@ println()
 #####
 
 function report_agreement(series, places)
-    t = series.time
     for place in keys(places)
         println("  $(place):")
-        η_shelf   = series.η.shelf[place]
-        η_estuary = series.η.estuary[place]
-        if !any(isnan, η_estuary) && !any(isnan, η_shelf)
-            rms = sqrt(sum((η_shelf .- η_estuary).^2) / length(η_shelf))
-            @printf("    η shelf vs estuary: range %.2f vs %.2f m, rms difference %.4f m\n",
-                    maximum(η_shelf) - minimum(η_shelf),
-                    maximum(η_estuary) - minimum(η_estuary), rms)
-        end
-        s_shelf   = series.speed.shelf[place]
-        s_estuary = series.speed.estuary[place]
-        if !any(isnan, s_estuary) && !any(isnan, s_shelf)
-            @printf("    speed shelf vs estuary: peak %.2f vs %.2f m/s\n",
-                    maximum(s_shelf), maximum(s_estuary))
+        for (parent_name, child_name) in ((:shelf, :bristol), (:bristol, :severn))
+            η_parent = series.η[parent_name][place]
+            η_child  = series.η[child_name][place]
+            if !any(isnan, η_child) && !any(isnan, η_parent)
+                rms = sqrt(sum((η_parent .- η_child).^2) / length(η_parent))
+                @printf("    η %s vs %s: range %.2f vs %.2f m, rms difference %.4f m\n",
+                        parent_name, child_name,
+                        maximum(η_parent) - minimum(η_parent),
+                        maximum(η_child) - minimum(η_child), rms)
+            end
+            s_parent = series.speed[parent_name][place]
+            s_child  = series.speed[child_name][place]
+            if !any(isnan, s_child) && !any(isnan, s_parent)
+                @printf("    speed %s vs %s: peak %.2f vs %.2f m/s\n",
+                        parent_name, child_name,
+                        maximum(s_parent), maximum(s_child))
+            end
         end
     end
 end

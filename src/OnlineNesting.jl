@@ -1,6 +1,6 @@
 module OnlineNesting
 
-export nested_grid, parent_indices,
+export nested_grid, nested_timestep, parent_indices,
        StateExchanger, nested_boundary_conditions, nested_forcings,
        TwoWayNestedModel,
        EMODnet2024, refer_to_mean_sea_level!, blend_parent_bottom!, restrict_bottom!,
@@ -17,7 +17,7 @@ using Oceananigans.BoundaryConditions: FieldBoundaryConditions, GravityWaveRadia
                                        TidalHarmonics, TracerReservoir, ValueBoundaryCondition,
                                        fill_halo_regions!, regularize_boundary_condition
 using Oceananigans.Fields: CenterField, Field, OneField, compute!, instantiated_location, interior, interpolate, location, set!
-using Oceananigans.Grids: Bounded, Center, Face, Flat, LatitudeLongitudeGrid, MutableVerticalDiscretization, Open,
+using Oceananigans.Grids: Bounded, Center, Face, Flat, LatitudeLongitudeGrid, MutableVerticalDiscretization, Open, RectilinearGrid,
                           cpu_face_constructor_r, cpu_face_constructor_x, cpu_face_constructor_y,
                           halo_size, inactive_cell, inactive_node, reconstruction_faces, x_domain, y_domain, λnodes, φnodes
 using Oceananigans.Models.HydrostaticFreeSurfaceModels: tracer_advecting_velocities
@@ -40,6 +40,7 @@ using KernelAbstractions: @index, @kernel
 using NCDatasets: NCDataset, defVar
 
 include("nested_grid.jl")
+include("nested_timestep.jl")
 include("state_exchanger.jl")
 include("two_way_nested_model.jl")
 include("nested_bathymetry.jl")

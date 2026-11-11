@@ -1,4 +1,4 @@
-# Running the Severn Estuary two-level nesting case on bouchet
+# Running the Severn Estuary three-level nesting case on bouchet
 
 ## 1. Clone and set up Oceananigans
 
@@ -94,7 +94,7 @@ julia --project=test -t auto validation/severn_estuary.jl 7   # 7 days
 
 ### GPU (for production)
 
-Change `arch = CPU()` to `arch = GPU()` at line 31 of `severn_estuary.jl`, then:
+Change `arch = CPU()` to `arch = GPU()` at line 33 of `severn_estuary.jl`, then:
 
 ```bash
 julia --project=test -t auto -e 'using CUDA; include("validation/severn_estuary.jl")'
@@ -105,26 +105,34 @@ everything loads, then run 30+ for tidal analysis.
 
 ## 5. What it does
 
-- Builds a shelf grid (140×90×50) and estuary grid (400×200×30, 5× refinement) with z-star layers
-- Downloads EMODnet bathymetry, corrects from LAT to MSL using TPXO10 tidal amplitudes, blends
-  between levels
-- Applies TPXO10 tidal Flather conditions and GLORYS T/S/u/v at the shelf boundary
+- Builds three nested grids with 5× refinement between levels:
+  - **Shelf** (340×320×50, ~3.5 km): NW European shelf with TPXO tidal + GLORYS open boundaries
+  - **Bristol Channel** (350×140×50, ~690 m): nested from shelf, covers the Bristol Channel
+  - **Severn Estuary** (~500×325×30, ~140 m): nested from Bristol, Llantwit Major to Gloucester
+- Computes timesteps from CFL constraints using `nested_timestep` (RK3, CFL ≈ 1.7)
+- Downloads EMODnet bathymetry, corrects from LAT to MSL using TPXO10 tidal amplitudes (computed
+  on the Bristol grid to avoid the 0° longitude atlas_window bug), blends between levels
 - Creates an ERA5-forced `EarthSystemModel` per level with CATKE closure
-- Optionally routes GloFAS river discharge onto the estuary grid via `PrescribedLand`
-- Records sea level and surface speed at Avonmouth, Newport, Mumbles and Ilfracombe
-- Reports inter-level agreement at the end
+- Optionally routes GloFAS river discharge onto the Severn grid via `PrescribedLand`
+- Records sea level and surface speed at Avonmouth, Newport, Mumbles, Ilfracombe and Hinkley Point
+- Reports inter-level agreement (shelf↔Bristol, Bristol↔Severn) at the end
 
-## 6. What to look for
+## 6. Performance
 
-- **Tidal range agreement**: the shelf and estuary should produce similar tidal ranges where they
+Estimated ~5 SYPD on a single H100. The Severn domain dominates cost (~85% of wet-column-steps).
+A 30-day run should complete well within an hour on GPU.
+
+## 7. What to look for
+
+- **Tidal range agreement**: adjacent levels should produce similar tidal ranges where they
   overlap. The Bristol Channel has some of the largest tides in the world (~14 m spring range at
   Avonmouth), so even small inconsistencies are visible.
-- **Estuary salinity** (if GloFAS is enabled): river freshwater should create a salinity gradient
+- **Severn salinity** (if GloFAS is enabled): river freshwater should create a salinity gradient
   from ~0 psu at the tidal limit to ~35 psu in the outer Bristol Channel.
 - **Spin-up**: the boundary conditions spin up the interior over the first few days. Initial
   conditions are an analytic profile, not GLORYS fields.
 
-## 7. Feedback-off comparison
+## 8. Feedback-off comparison
 
-To compare with one-way nesting, change the `TwoWayNestedModel` call near the bottom of the
+To compare with one-way nesting, change the `TwoWayNestedModel` calls near the bottom of the
 script to use `width = 0`.
