@@ -15,6 +15,7 @@
 # For GPU, load CUDA before this script and set arch = GPU() below.
 
 using Dates
+using CDSAPI
 using CopernicusMarine
 using Downloads: Downloads
 using Oceananigans
