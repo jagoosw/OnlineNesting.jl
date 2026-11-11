@@ -24,24 +24,42 @@ function atlas_window(dataset::TPXO10Atlas, region)
 
     west, east = mod.(region.longitude, 360)
     south, north = region.latitude
-
-    columns = searchsortedlast(λᶠ, west):(searchsortedfirst(λᶠ, east) - 1)
     rows = searchsortedlast(φᶠ, south):(searchsortedfirst(φᶠ, north) - 1)
 
-    grid = LatitudeLongitudeGrid(size = (length(columns), length(rows)),
-                                 longitude = (λᶠ[first(columns)], λᶠ[last(columns) + 1]),
+    if west ≤ east
+        columns = searchsortedlast(λᶠ, west):(searchsortedfirst(λᶠ, east) - 1)
+        longitude = (λᶠ[first(columns)], λᶠ[last(columns) + 1])
+    else
+        Nλ = length(λᶠ)
+        west_columns = searchsortedlast(λᶠ, west):Nλ
+        east_columns = 1:(searchsortedfirst(λᶠ, east) - 1)
+        columns = (west_columns, east_columns)
+        longitude = (λᶠ[first(west_columns)] - 360, λᶠ[last(east_columns) + 1])
+    end
+
+    Nc = columns isa Tuple ? length(columns[1]) + length(columns[2]) : length(columns)
+    grid = LatitudeLongitudeGrid(size = (Nc, length(rows)),
+                                 longitude = longitude,
                                  latitude = (φᶠ[first(rows)], φᶠ[last(rows) + 1]),
                                  topology = (Bounded, Bounded, Flat))
 
     return (; grid, rows, columns)
 end
 
+read_atlas(variable, rows, columns::AbstractRange, face) =
+    permutedims(variable[rows, face ? (first(columns):(last(columns) + 1)) : columns])
+
+function read_atlas(variable, rows, columns::Tuple, face)
+    west, east = columns
+    east_cols = face ? (first(east):(last(east) + 1)) : east
+    return permutedims(hcat(variable[rows, west], variable[rows, east_cols]))
+end
+
 function atlas_field(window, path, names, (LX, LY), conversion)
-    columns = LX === Face ? (first(window.columns):(last(window.columns) + 1)) : window.columns
     rows = LY === Face ? (first(window.rows):(last(window.rows) + 1)) : window.rows
 
     real_data, imaginary_data = NCDataset(path) do atlas
-        map(name -> permutedims(atlas[name][rows, columns]), names)
+        map(name -> read_atlas(atlas[name], rows, window.columns, LX === Face), names)
     end
 
     mask = Field{LX, LY, Nothing}(window.grid, Bool)
@@ -65,11 +83,7 @@ $(TYPEDSIGNATURES)
 
 Lowest astronomical tide height [m] relative to mean sea level, computed from the TPXO10 atlas as
 the negative sum of tidal elevation amplitudes: LAT ≈ -Σ|Aᵢ|. The result is a `Field` on the
-atlas window grid (0–360° longitude); wrap it for grids that use negative longitudes:
-
-    lowest_tide(λ, φ) = interpolate((mod(λ, 360), φ), lat_field)
-
-then pass to [`refer_to_mean_sea_level!`](@ref).
+atlas window grid; pass it to [`refer_to_mean_sea_level!`](@ref).
 """
 function lowest_astronomical_tide(dataset::TPXO10Atlas, grid;
                                   constituents = keys(earth_tidal_constituents))
@@ -108,7 +122,8 @@ function Oceananigans.BoundaryConditions.tidal_atlas_constants(dataset::TPXO10At
     u_field = atlas_field(window, transport_path, ("uRe", "uIm"), (Face, Center), 1e-4)
     v_field = atlas_field(window, transport_path, ("vRe", "vIm"), (Center, Face), 1e-4)
 
-    at_nodes(field) = [interpolate((mod(λ, 360), φ), field) for (λ, φ) in nodes]
+    λ_west = x_domain(window.grid)[1]
+    at_nodes(field) = [interpolate((mod(λ - λ_west, 360) + λ_west, φ), field) for (λ, φ) in nodes]
 
     return (; sea_surface_height = at_nodes(η_field),
               eastward_transport = at_nodes(u_field),

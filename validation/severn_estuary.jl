@@ -95,10 +95,9 @@ result = nested_timestep(
 #####
 
 tpxo = TPXO10Atlas(; dir=tpxo_dir)
-# LAT computed on bristol_grid: the shelf grid spans 0° longitude,
-# triggering the atlas_window wrapping bug in TPXO interpolation
-lat_field = lowest_astronomical_tide(tpxo, bristol_grid)
-lowest_tide(λ, φ) = interpolate((mod(λ, 360), φ), lat_field)
+lat_field = lowest_astronomical_tide(tpxo, shelf_grid)
+λ_west = Oceananigans.Grids.x_domain(lat_field.grid)[1]
+lowest_tide(λ, φ) = interpolate((mod(λ - λ_west, 360) + λ_west, φ), lat_field)
 
 function emodnet_bottom_height(grid; interpolation_passes, major_basins=Inf, lat_correction=lowest_tide, dir=emodnet_dir)
     metadatum = Metadatum(:bottom_height; dataset=EMODnet2024(), region=BoundingBox(grid), dir)
