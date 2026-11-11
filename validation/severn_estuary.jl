@@ -17,7 +17,6 @@
 using Dates
 using CDSAPI
 using CopernicusMarine
-using Downloads: Downloads
 using Oceananigans
 using Oceananigans.Units
 using Oceananigans.BoundaryConditions: TracerReservoir, tidal_boundary_conditions
@@ -135,13 +134,10 @@ tidal_bcs  = tidal_boundary_conditions(shelf_grid, harmonics, tpxo)
 #####
 
 glorys = GLORYSDaily()
-shelf_region = BoundingBox(shelf_grid)
-glorys_kw = (; dataset=glorys, start_date, end_date, region=shelf_region)
+glorys_region = BoundingBox(longitude = (-12.5, 5.5), latitude = (45.5, 62.5))
+glorys_kw = (; dataset=glorys, start_date, end_date, region=glorys_region)
 isnothing(glorys_dir) || (glorys_kw = merge(glorys_kw, (; dir=glorys_dir)))
 fts_kw = (; time_indices_in_memory=30)
-
-mset = MetadataSet(:temperature, :salinity, :u_velocity, :v_velocity; glorys_kw...)
-Downloads.download(mset)
 
 glorys_T = FieldTimeSeries(Metadata(:temperature; glorys_kw...), arch; fts_kw...)
 glorys_S = FieldTimeSeries(Metadata(:salinity;    glorys_kw...), arch; fts_kw...)
@@ -172,7 +168,7 @@ tracers = (:T, :S, :dye)
 shelf_ocean = ocean_simulation(shelf_grid; tracers,
     boundary_conditions=shelf_boundary_conditions, warn=false)
 
-glorys_init_kw = (; dataset=glorys, date=start_date, region=shelf_region)
+glorys_init_kw = (; dataset=glorys, date=start_date, region=glorys_region)
 isnothing(glorys_dir) || (glorys_init_kw = merge(glorys_init_kw, (; dir=glorys_dir)))
 set!(shelf_ocean.model, T = Metadatum(:temperature; glorys_init_kw...),
                         S = Metadatum(:salinity;    glorys_init_kw...))
