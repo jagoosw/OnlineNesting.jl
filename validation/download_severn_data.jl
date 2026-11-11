@@ -46,17 +46,21 @@ glofas_region = BoundingBox(; longitude=severn_longitude, latitude=severn_latitu
 glorys = GLORYSDaily()
 glorys_dates = start_date:Day(1):(end_date - Day(1))
 
-for variable in (:temperature, :salinity, :u_velocity, :v_velocity, :free_surface)
-    @info "GLORYS $variable"
-    Downloads.download(Metadata(variable; dataset=glorys, dates=glorys_dates, region=glorys_region))
+@sync begin
+    for variable in (:temperature, :salinity, :u_velocity, :v_velocity, :free_surface)
+        @async begin
+            @info "GLORYS $variable"
+            Downloads.download(Metadata(variable; dataset=glorys, dates=glorys_dates, region=glorys_region))
+            @info "GLORYS $variable done"
+        end
+    end
+
+    @async begin
+        @info "GloFAS river discharge"
+        Downloads.download(Metadata(:river_discharge; dataset=GloFASReanalysis(),
+                                    start_date, end_date, region=glofas_region))
+        @info "GloFAS done"
+    end
 end
-
-#####
-##### GloFAS river discharge
-#####
-
-@info "GloFAS river discharge"
-Downloads.download(Metadata(:river_discharge; dataset=GloFASReanalysis(),
-                            start_date, end_date, region=glofas_region))
 
 @info "Done"
