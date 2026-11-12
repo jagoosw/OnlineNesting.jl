@@ -285,12 +285,14 @@ for (name, ocean) in pairs((; shelf=shelf_ocean, bristol=bristol_ocean, severn=s
         filename = joinpath(output_dir, "$(name)_surface"),
         schedule = TimeInterval(1hours),
         indices = (:, :, Nz_model),
+        including = [],
         with_halos = false,
         overwrite_files = true)
 
     simulation.output_writers[Symbol(name, :_eta)] = JLD2Writer(model, (; η = model.free_surface.displacement);
         filename = joinpath(output_dir, "$(name)_eta"),
         schedule = TimeInterval(1hours),
+        including = [],
         with_halos = false,
         overwrite_files = true)
 #=
