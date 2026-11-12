@@ -178,7 +178,6 @@ glorys_init_kw = (; dataset=glorys, date=start_date, region=glorys_region)
 isnothing(glorys_dir) || (glorys_init_kw = merge(glorys_init_kw, (; dir=glorys_dir)))
 set!(shelf_ocean.model, T = Metadatum(:temperature; glorys_init_kw...),
                         S = Metadatum(:salinity;    glorys_init_kw...))
-parent(shelf_ocean.model.tracers.S) .= max.(parent(shelf_ocean.model.tracers.S), 0)
 
 #####
 ##### ERA5 atmosphere and radiation per level
@@ -201,7 +200,7 @@ severn_radiation  = ERA5PrescribedRadiation(arch;  start_date, end_date, era5_kw
 #####
 
 severn_land = GloFASPrescribedLand(severn_grid;
-                                   start_date, end_date, 
+                                   start_date, end_date,
                                    region=BoundingBox(severn_grid), dir=glofas_dir)
     severn_river_routing = severn_land.river_routing
 
@@ -222,6 +221,9 @@ hinkley_dye = Forcing(hinkley_dye_source,
 shelf_model = OceanOnlyModel(shelf_ocean;
     atmosphere=shelf_atmosphere, radiation=shelf_radiation)
 
+# OceanOnlyModel calls reconcile_state! → update_state! which refills halos; clamp after
+parent(shelf_ocean.model.tracers.S) .= max.(parent(shelf_ocean.model.tracers.S), 0)
+
 bristol_exchanger = StateExchanger(shelf_model)
 bristol_sponge    = nested_forcings(bristol_exchanger, bristol_grid;
     rate=1/1hours, width=refinement*width)
@@ -231,10 +233,11 @@ bristol_ocean = ocean_simulation(bristol_grid; tracers, tracer_advection,
     boundary_conditions=bristol_bcs, forcing=bristol_sponge, warn=false)
 set!(bristol_ocean.model, T = Metadatum(:temperature; glorys_init_kw...),
                           S = Metadatum(:salinity;    glorys_init_kw...))
-parent(bristol_ocean.model.tracers.S) .= max.(parent(bristol_ocean.model.tracers.S), 0)
 
 bristol_model = OceanOnlyModel(bristol_ocean;
     atmosphere=bristol_atmosphere, radiation=bristol_radiation)
+
+parent(bristol_ocean.model.tracers.S) .= max.(parent(bristol_ocean.model.tracers.S), 0)
 
 severn_exchanger = StateExchanger(bristol_model)
 severn_sponge    = nested_forcings(severn_exchanger, severn_grid;
@@ -247,11 +250,12 @@ severn_ocean = ocean_simulation(severn_grid; tracers, tracer_advection,
     river_routing=severn_river_routing, warn=false)
 set!(severn_ocean.model, T = Metadatum(:temperature; glorys_init_kw...),
                           S = Metadatum(:salinity;    glorys_init_kw...))
-parent(severn_ocean.model.tracers.S) .= max.(parent(severn_ocean.model.tracers.S), 0)
 
 severn_model = OceanOnlyModel(severn_ocean;
     atmosphere=severn_atmosphere, radiation=severn_radiation,
     land=severn_land)
+
+parent(severn_ocean.model.tracers.S) .= max.(parent(severn_ocean.model.tracers.S), 0)
 
 #####
 ##### Assemble the three-level nested model
