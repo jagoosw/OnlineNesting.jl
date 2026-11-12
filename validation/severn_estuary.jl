@@ -29,6 +29,14 @@ using NumericalEarth.NestedModels: Interpolated
 using OnlineNesting
 using Printf
 
+# TODO: NumericalEarth's ReynoldsScalingFunction evaluates R★^0.72 without guarding R★ < 0.
+# The MOST iteration can produce negative u★ when the similarity profile flips sign, which
+# feeds a negative R★ into the fractional power and crashes the GPU. Fix upstream; this
+# override guards the argument until then.
+using NumericalEarth.EarthSystemModels.InterfaceComputations: ReynoldsScalingFunction
+@inline (s::ReynoldsScalingFunction)(R★, args...) =
+    ifelse(R★ <= 0, convert(eltype(R★), 0), s.A / R★ ^ s.b)
+
 #####
 ##### Configuration
 #####
