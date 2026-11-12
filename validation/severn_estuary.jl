@@ -217,7 +217,7 @@ shelf_model = OceanOnlyModel(shelf_ocean;
 
 bristol_exchanger = StateExchanger(shelf_model)
 bristol_sponge    = nested_forcings(bristol_exchanger, bristol_grid;
-    rate=1/1hour, width=refinement*width)
+    rate=1/1hours, width=refinement*width)
 bristol_bcs       = nested_boundary_conditions(bristol_exchanger, bristol_grid)
 
 bristol_ocean = ocean_simulation(bristol_grid; tracers,
@@ -230,7 +230,7 @@ bristol_model = OceanOnlyModel(bristol_ocean;
 
 severn_exchanger = StateExchanger(bristol_model)
 severn_sponge    = nested_forcings(severn_exchanger, severn_grid;
-    rate=1/1hour, width=refinement*width)
+    rate=1/1hours, width=refinement*width)
 severn_bcs       = nested_boundary_conditions(severn_exchanger, severn_grid)
 
 severn_ocean = ocean_simulation(severn_grid; tracers,
