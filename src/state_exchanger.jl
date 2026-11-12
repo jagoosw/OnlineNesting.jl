@@ -30,6 +30,9 @@ function land_fill(field)
         take_unfilled!(view(donor, :, 1:Ny-1, :), view(donor, :, 2:Ny, :))
     end
 
+    # Land nodes with no sea neighbor at their level are unreachable; map them to themselves
+    donor .= ifelse.(donor .== 0, LinearIndices(donor), donor)
+
     indices = LinearIndices(parent(field))[parentindices(interior(field))...]
 
     return (land = on_architecture(architecture(grid), indices[land]),
