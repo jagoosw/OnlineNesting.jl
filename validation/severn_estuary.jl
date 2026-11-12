@@ -18,6 +18,7 @@ using Dates
 using CDSAPI
 using CopernicusMarine
 using Oceananigans
+using Oceananigans.Advection: WENO, WENOVectorInvariant, UpwindBiased
 using Oceananigans.Units
 using Oceananigans.BoundaryConditions: TracerReservoir, tidal_boundary_conditions
 using Oceananigans.Fields: interpolate
@@ -164,8 +165,10 @@ shelf_boundary_conditions = (
 #####
 
 tracers = (:T, :S, :dye)
+vi = AdaptiveVerticallyImplicitDiscretization(cfl=0.5)
+tracer_advection = WENO(order=7, time_discretization=vi, boundary_scheme=UpwindBiased(order=1))
 
-shelf_ocean = ocean_simulation(shelf_grid; tracers,
+shelf_ocean = ocean_simulation(shelf_grid; tracers, tracer_advection,
     boundary_conditions=shelf_boundary_conditions, warn=false)
 
 glorys_init_kw = (; dataset=glorys, date=start_date, region=glorys_region)
@@ -221,7 +224,7 @@ bristol_sponge    = nested_forcings(bristol_exchanger, bristol_grid;
     rate=1/1hours, width=refinement*width)
 bristol_bcs       = nested_boundary_conditions(bristol_exchanger, bristol_grid)
 
-bristol_ocean = ocean_simulation(bristol_grid; tracers,
+bristol_ocean = ocean_simulation(bristol_grid; tracers, tracer_advection,
     boundary_conditions=bristol_bcs, forcing=bristol_sponge, warn=false)
 set!(bristol_ocean.model, T = Metadatum(:temperature; glorys_init_kw...),
                           S = Metadatum(:salinity;    glorys_init_kw...))
@@ -235,7 +238,7 @@ severn_sponge    = nested_forcings(severn_exchanger, severn_grid;
     rate=1/1hours, width=refinement*width)
 severn_bcs       = nested_boundary_conditions(severn_exchanger, severn_grid)
 
-severn_ocean = ocean_simulation(severn_grid; tracers,
+severn_ocean = ocean_simulation(severn_grid; tracers, tracer_advection,
     boundary_conditions=severn_bcs,
     forcing=merge(severn_sponge, (; dye=hinkley_dye)),
     river_routing=severn_river_routing, warn=false)
