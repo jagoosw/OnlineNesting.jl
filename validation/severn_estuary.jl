@@ -145,6 +145,9 @@ glorys_S = FieldTimeSeries(Metadata(:salinity;    glorys_kw...), arch; fts_kw...
 glorys_u = FieldTimeSeries(Metadata(:u_velocity;  glorys_kw...), arch; fts_kw...)
 glorys_v = FieldTimeSeries(Metadata(:v_velocity;  glorys_kw...), arch; fts_kw...)
 
+# GLORYS reanalysis can carry slightly negative salinity near coasts; TEOS10 requires S_A ≥ 0
+parent(glorys_S.data) .= max.(parent(glorys_S.data), 0)
+
 reservoir(source) = ValueBoundaryCondition(Interpolated(source); scheme=TracerReservoir())
 normal(source)    = NormalFlowBoundaryCondition(Interpolated(source))
 
