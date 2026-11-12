@@ -18,7 +18,7 @@ using Dates
 using CDSAPI
 using CopernicusMarine
 using Oceananigans
-using Oceananigans.Advection: WENO, WENOVectorInvariant, UpwindBiased
+using Oceananigans.Advection: WENO
 using Oceananigans.Units
 using Oceananigans.BoundaryConditions: TracerReservoir, tidal_boundary_conditions
 using Oceananigans.Fields: interpolate
@@ -166,7 +166,7 @@ shelf_boundary_conditions = (
 
 tracers = (:T, :S, :dye)
 vi = AdaptiveVerticallyImplicitDiscretization(cfl=0.5)
-tracer_advection = WENO(order=7, time_discretization=vi, boundary_scheme=UpwindBiased(order=1))
+tracer_advection = WENO(order=7, time_discretization=vi, minimum_buffer_upwind_order=1)
 
 shelf_ocean = ocean_simulation(shelf_grid; tracers, tracer_advection,
     boundary_conditions=shelf_boundary_conditions, warn=false)
