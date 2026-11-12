@@ -99,6 +99,16 @@ function TimeSteppers.time_step!(nest::TwoWayNestedModel, Δt; callbacks=[])
     return nothing
 end
 
+Oceananigans.prognostic_state(nest::TwoWayNestedModel) =
+    (parent = prognostic_state(nest.parent),
+     child  = prognostic_state(nest.child))
+
+function Oceananigans.restore_prognostic_state!(nest::TwoWayNestedModel, state)
+    restore_prognostic_state!(nest.parent, state.parent)
+    restore_prognostic_state!(nest.child, state.child)
+    return nothing
+end
+
 function TimeSteppers.update_state!(nest::TwoWayNestedModel, callbacks=[])
     update_level_state!(nest.child)
     feed_back!(nest, callbacks)

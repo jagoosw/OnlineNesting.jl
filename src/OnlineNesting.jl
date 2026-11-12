@@ -8,7 +8,8 @@ export nested_grid, nested_timestep, parent_indices,
 
 using Dates: Dates, DateTime
 
-using Oceananigans: Oceananigans, AbstractModel, TracerTendencyCallsite, fields, prognostic_fields
+using Oceananigans: Oceananigans, AbstractModel, TracerTendencyCallsite, fields, prognostic_fields,
+                    prognostic_state, restore_prognostic_state!
 using Oceananigans.AbstractOperations: KernelFunctionOperation
 using Oceananigans.Advection: Centered
 using Oceananigans.Architectures: architecture, on_architecture

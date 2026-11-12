@@ -286,12 +286,13 @@ for (name, ocean) in pairs((; shelf=shelf_ocean, bristol=bristol_ocean, severn=s
         with_halos = false,
         overwrite_files = true)=#
 
-    simulation.output_writers[Symbol(name, :_checkpoint)] = Checkpointer(model;
-        schedule = TimeInterval(1days),
-        dir = output_dir,
-        prefix = "$(name)_checkpoint",
-        cleanup = true)
 end
+
+simulation.output_writers[:checkpoint] = Checkpointer(shelf_ocean.model;
+    schedule = TimeInterval(1days),
+    dir = output_dir,
+    prefix = "checkpoint",
+    cleanup = true)
 
 #####
 ##### Progress
