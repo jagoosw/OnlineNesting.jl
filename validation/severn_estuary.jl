@@ -266,17 +266,22 @@ for (name, ocean) in pairs((; shelf=shelf_ocean, bristol=bristol_ocean, severn=s
     model = ocean.model
     Nz_model = size(model.grid, 3)
 
-    outputs = (; η = model.free_surface.displacement,
-                 T = model.tracers.T,
-                 S = model.tracers.S,
-                 u = model.velocities.u,
-                 v = model.velocities.v,
-                 dye = model.tracers.dye)
+    surface_fields = (; T = model.tracers.T,
+                        S = model.tracers.S,
+                        u = model.velocities.u,
+                        v = model.velocities.v,
+                        dye = model.tracers.dye)
 
-    simulation.output_writers[Symbol(name, :_surface)] = JLD2Writer(model, outputs;
+    simulation.output_writers[Symbol(name, :_surface)] = JLD2Writer(model, surface_fields;
         filename = joinpath(output_dir, "$(name)_surface"),
         schedule = TimeInterval(1hours),
         indices = (:, :, Nz_model),
+        with_halos = false,
+        overwrite_files = true)
+
+    simulation.output_writers[Symbol(name, :_eta)] = JLD2Writer(model, (; η = model.free_surface.displacement);
+        filename = joinpath(output_dir, "$(name)_eta"),
+        schedule = TimeInterval(1hours),
         with_halos = false,
         overwrite_files = true)
 #=
