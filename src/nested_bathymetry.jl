@@ -23,7 +23,7 @@ function refer_to_mean_sea_level!(bottom_height, lowest_tide; minimum_depth = 0)
     correction = Array(interior(datum_height, :, :, 1))
     was_wet = raw .< 0
     height = raw .+ correction
-    set!(bottom_height, ifelse.(was_wet, min.(height, -minimum_depth), 0))
+    set!(bottom_height, ifelse.(was_wet, min.(height, -minimum_depth), zero(eltype(height))))
     fill_halo_regions!(bottom_height)
 
     return bottom_height
