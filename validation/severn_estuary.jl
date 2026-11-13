@@ -34,8 +34,10 @@ using Printf
 # feeds a negative R★ into the fractional power and crashes the GPU. Fix upstream; this
 # override guards the argument until then.
 using NumericalEarth.EarthSystemModels.InterfaceComputations: ReynoldsScalingFunction
-@inline (s::ReynoldsScalingFunction)(R★, args...) =
-    ifelse(R★ <= 0, convert(eltype(R★), 0), s.A / R★ ^ s.b)
+@inline function (s::ReynoldsScalingFunction)(R★, args...)
+    safe_R★ = max(R★, eps(eltype(R★)))
+    return ifelse(R★ <= 0, zero(R★), s.A / safe_R★ ^ s.b)
+end
 
 #####
 ##### Configuration
