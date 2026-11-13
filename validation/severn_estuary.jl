@@ -29,15 +29,32 @@ using NumericalEarth.NestedModels: Interpolated
 using OnlineNesting
 using Printf
 
-# TODO: NumericalEarth's ReynoldsScalingFunction evaluates R★^0.72 without guarding R★ < 0.
-# The MOST iteration can produce negative u★ when the similarity profile flips sign, which
-# feeds a negative R★ into the fractional power and crashes the GPU. Fix upstream; this
-# override guards the argument until then.
-using NumericalEarth.EarthSystemModels.InterfaceComputations: ReynoldsScalingFunction
-@inline function (s::ReynoldsScalingFunction)(R★, args...)
-    safe_R★ = max(R★, eps(eltype(R★)))
-    return ifelse(R★ <= 0, zero(R★), s.A / safe_R★ ^ s.b)
+# TODO: fix upstream in NumericalEarth. The MOST iteration can produce negative u★ when the
+# similarity profile flips sign under extreme atmosphere-ocean temperature differences at
+# startup. A negative u★ makes the viscous roughness term ℂν ν / u★ large and negative,
+# so the momentum roughness length ℓu goes negative and log(h / ℓu) throws DomainError.
+# Even when ℓu stays positive, R★ = ℓu u★ / ν is negative and R★^0.72 also throws.
+# Guard both by clamping u★ ≥ 0 in the roughness length; the iteration then converges to
+# zero fluxes for those cells.
+using NumericalEarth.EarthSystemModels.InterfaceComputations: ReynoldsScalingFunction,
+    MomentumRoughnessLength, gravity_wave_parameter, compute_air_kinematic_viscosity,
+    roughness_length
+
+@inline function roughness_length(ℓ::MomentumRoughnessLength{FT}, u★, Uᵃᵗ, ℂᵃᵗ=nothing, Tᵃᵗ=nothing) where FT
+    u★_pos = max(u★, zero(u★))
+    ν = compute_air_kinematic_viscosity(ℓ.air_kinematic_viscosity, ℂᵃᵗ, Tᵃᵗ)
+    g = ℓ.gravitational_acceleration
+    ℂg = gravity_wave_parameter(ℓ.wave_formulation, Uᵃᵗ)
+    ℂν = ℓ.smooth_wall_parameter
+    ℓᵂ = ℂg * u★_pos^2 / g
+    ℓᴿ = ifelse(u★_pos == zero(u★), zero(u★), ℂν * ν / u★_pos)
+    ℓ★ = ℓᵂ + ℓᴿ
+    ℓ_max = ℓ.maximum_roughness_length
+    return min(ℓ★, ℓ_max)
 end
+
+@inline (s::ReynoldsScalingFunction)(R★, args...) =
+    ifelse(R★ <= 0, convert(eltype(R★), 0), s.A / max(R★, eps(eltype(R★))) ^ s.b)
 
 #####
 ##### Configuration
