@@ -37,8 +37,8 @@ using Printf
 # Guard both by clamping u★ ≥ 0 in the roughness length; the iteration then converges to
 # zero fluxes for those cells.
 using NumericalEarth.EarthSystemModels.InterfaceComputations: ReynoldsScalingFunction,
-    MomentumRoughnessLength, gravity_wave_parameter, compute_air_kinematic_viscosity,
-    roughness_length
+    MomentumRoughnessLength, gravity_wave_parameter, compute_air_kinematic_viscosity
+import NumericalEarth.EarthSystemModels.InterfaceComputations: roughness_length
 
 @inline function roughness_length(ℓ::MomentumRoughnessLength{FT}, u★, Uᵃᵗ, ℂᵃᵗ=nothing, Tᵃᵗ=nothing) where FT
     u★_pos = max(u★, zero(u★))
