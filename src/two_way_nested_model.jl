@@ -75,8 +75,11 @@ function TimeSteppers.time_step!(nest::TwoWayNestedModel, Δt; callbacks=[])
 
     # TODO: remove after debugging; sync GPU to detect which phase throws DomainError
     if nest.clock.iteration == 0
-        Oceananigans.Architectures.synchronize(architecture(ocean_model(nest.parent).grid))
-        @info "sync after update_state! passed"
+        parent_ocean = ocean_model(nest.parent)
+        Oceananigans.Architectures.synchronize(architecture(parent_ocean.grid))
+        S_min = minimum(interior(parent_ocean.tracers.S))
+        S_max = maximum(interior(parent_ocean.tracers.S))
+        @info "sync after update_state! passed; parent S ∈ [$(S_min), $(S_max)]"
     end
 
     time = nest.clock.time
@@ -187,7 +190,10 @@ function accumulate_fluxes!(model, parameters)
     # TODO: remove after debugging
     if model.clock.iteration == 0
         Oceananigans.Architectures.synchronize(architecture(model.grid))
-        @info "  stage $(model.clock.stage)/$(model.timestepper.Nstages) sync passed"
+        S = model.tracers.S
+        S_min = minimum(interior(S))
+        S_max = maximum(interior(S))
+        @info "  stage $(model.clock.stage)/$(model.timestepper.Nstages) sync passed; S ∈ [$(S_min), $(S_max)]"
     end
     model.clock.stage == model.timestepper.Nstages || return nothing
 
