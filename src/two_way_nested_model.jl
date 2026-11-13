@@ -84,6 +84,13 @@ function TimeSteppers.time_step!(nest::TwoWayNestedModel, Δt; callbacks=[])
     foreach(mismatch -> fill!(mismatch, 0), nest.flux_mismatch.tracers)
 
     store_state!(nest.exchanger, 1)
+
+    # TODO: remove after debugging
+    if nest.clock.iteration == 0
+        Oceananigans.Architectures.synchronize(architecture(ocean_model(nest.parent).grid))
+        @info "sync after store_state! passed"
+    end
+
     time_step!(nest.parent, Δt; callbacks = [callbacks..., nest.flux_callbacks.parent])
     store_state!(nest.exchanger, 2)
 
