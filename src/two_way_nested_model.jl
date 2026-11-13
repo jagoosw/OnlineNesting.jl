@@ -73,6 +73,12 @@ end
 function TimeSteppers.time_step!(nest::TwoWayNestedModel, Δt; callbacks=[])
     nest.clock.iteration == 0 && update_state!(nest, callbacks)
 
+    # TODO: remove after debugging; sync GPU to detect which phase throws DomainError
+    if nest.clock.iteration == 0
+        Oceananigans.Architectures.synchronize(architecture(ocean_model(nest.parent).grid))
+        @info "sync after update_state! passed"
+    end
+
     time = nest.clock.time
     fill!(nest.flux_mismatch.volume, 0)
     foreach(mismatch -> fill!(mismatch, 0), nest.flux_mismatch.tracers)
