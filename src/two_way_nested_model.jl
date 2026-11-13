@@ -177,6 +177,11 @@ end
 # and tracer that the step carries through the region's edge: out of those cells for the parent (`sign = 1`),
 # into them for the child (`sign = -1`).
 function accumulate_fluxes!(model, parameters)
+    # TODO: remove after debugging
+    if model.clock.iteration == 0
+        Oceananigans.Architectures.synchronize(architecture(model.grid))
+        @info "  stage $(model.clock.stage)/$(model.timestepper.Nstages) sync passed"
+    end
     model.clock.stage == model.timestepper.Nstages || return nothing
 
     i, j, k = parameters.feedback_indices
