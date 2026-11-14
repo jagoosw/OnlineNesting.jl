@@ -12,8 +12,7 @@
 #
 #   julia --project=test -t auto validation/severn_estuary.jl [days, default 30]
 #
-# For GPU, load CUDA before this script and set arch = GPU() below.
-
+using CUDA
 using Dates
 using CDSAPI
 using CopernicusMarine
@@ -60,7 +59,7 @@ end
 ##### Configuration
 #####
 
-arch = CPU()
+arch = CUDA.functional() ? GPU() : CPU()
 days_to_run = isempty(ARGS) ? 30 : parse(Float64, ARGS[1])
 start_date = DateTime(2018, 1, 1)
 end_date   = DateTime(2021, 1, 1)
