@@ -14,6 +14,7 @@ using Oceananigans.BoundaryConditions: TracerReservoir, tidal_boundary_condition
 using Oceananigans.Grids: Open, MutableVerticalDiscretization
 using NumericalEarth
 using NumericalEarth.DataWrangling: BoundingBox, GLORYSDaily, Metadata, MetadataSet
+using OnlineNesting
 using Printf
 
 using NumericalEarth.EarthSystemModels.InterfaceComputations: ReynoldsScalingFunction,
