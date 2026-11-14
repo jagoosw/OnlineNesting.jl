@@ -191,22 +191,6 @@ shelf_boundary_conditions = (
 )
 
 #####
-##### Ocean simulations (CATKE closure, WENO advection, SplitRungeKutta3)
-#####
-
-tracers = (:T, :S, :dye)
-vi = AdaptiveVerticallyImplicitDiscretization(cfl=0.5)
-tracer_advection = WENO(order=7, time_discretization=vi, minimum_buffer_upwind_order=1)
-
-shelf_ocean = ocean_simulation(shelf_grid; tracers, tracer_advection,
-    boundary_conditions=shelf_boundary_conditions, warn=false)
-
-glorys_init_kw = (; dataset=glorys, date=start_date, region=glorys_region)
-isnothing(glorys_dir) || (glorys_init_kw = merge(glorys_init_kw, (; dir=glorys_dir)))
-set!(shelf_ocean.model, T = Metadatum(:temperature; glorys_init_kw...),
-                        S = Metadatum(:salinity;    glorys_init_kw...))
-
-#####
 ##### ERA5 atmosphere and radiation per level
 #####
 
@@ -223,13 +207,39 @@ severn_atmosphere = ERA5PrescribedAtmosphere(arch; start_date, end_date, pressur
 severn_radiation  = ERA5PrescribedRadiation(arch;  start_date, end_date, era5_kw...)
 
 #####
-##### GloFAS river routing on the Severn (optional; set GLOFAS_DIR to enable)
+##### GloFAS river routing
 #####
+
+shelf_land = GloFASPrescribedLand(shelf_grid;
+                                  start_date, end_date,
+                                  region=BoundingBox(shelf_grid), dir=glofas_dir)
+shelf_river_routing = shelf_land.river_routing
+
+bristol_land = GloFASPrescribedLand(bristol_grid;
+                                    start_date, end_date,
+                                    region=BoundingBox(bristol_grid), dir=glofas_dir)
+bristol_river_routing = bristol_land.river_routing
 
 severn_land = GloFASPrescribedLand(severn_grid;
                                    start_date, end_date,
                                    region=BoundingBox(severn_grid), dir=glofas_dir)
-    severn_river_routing = severn_land.river_routing
+severn_river_routing = severn_land.river_routing
+
+#####
+##### Ocean simulations (CATKE closure, WENO advection, SplitRungeKutta3)
+#####
+
+tracers = (:T, :S, :dye)
+vi = AdaptiveVerticallyImplicitDiscretization(cfl=0.5)
+tracer_advection = WENO(order=7, time_discretization=vi, minimum_buffer_upwind_order=1)
+
+shelf_ocean = ocean_simulation(shelf_grid; tracers, tracer_advection,
+    boundary_conditions=shelf_boundary_conditions, river_routing=shelf_river_routing, warn=false)
+
+glorys_init_kw = (; dataset=glorys, date=start_date, region=glorys_region)
+isnothing(glorys_dir) || (glorys_init_kw = merge(glorys_init_kw, (; dir=glorys_dir)))
+set!(shelf_ocean.model, T = Metadatum(:temperature; glorys_init_kw...),
+                        S = Metadatum(:salinity;    glorys_init_kw...))
 
 #####
 ##### Passive dye tracer released from Hinkley Point
@@ -246,7 +256,7 @@ hinkley_dye = Forcing(hinkley_dye_source,
 #####
 
 shelf_model = OceanOnlyModel(shelf_ocean;
-    atmosphere=shelf_atmosphere, radiation=shelf_radiation)
+    atmosphere=shelf_atmosphere, radiation=shelf_radiation, land=shelf_land)
 
 # OceanOnlyModel calls reconcile_state! → update_state! which refills halos; clamp after
 parent(shelf_ocean.model.tracers.S) .= max.(parent(shelf_ocean.model.tracers.S), 0)
@@ -257,12 +267,12 @@ bristol_sponge    = nested_forcings(bristol_exchanger, bristol_grid;
 bristol_bcs       = nested_boundary_conditions(bristol_exchanger, bristol_grid)
 
 bristol_ocean = ocean_simulation(bristol_grid; tracers, tracer_advection,
-    boundary_conditions=bristol_bcs, forcing=bristol_sponge, warn=false)
+    boundary_conditions=bristol_bcs, forcing=bristol_sponge, river_routing=bristol_river_routing, warn=false)
 set!(bristol_ocean.model, T = Metadatum(:temperature; glorys_init_kw...),
                           S = Metadatum(:salinity;    glorys_init_kw...))
 
 bristol_model = OceanOnlyModel(bristol_ocean;
-    atmosphere=bristol_atmosphere, radiation=bristol_radiation)
+    atmosphere=bristol_atmosphere, radiation=bristol_radiation, land=bristol_land)
 
 parent(bristol_ocean.model.tracers.S) .= max.(parent(bristol_ocean.model.tracers.S), 0)
 
