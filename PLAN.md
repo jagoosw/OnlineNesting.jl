@@ -1043,6 +1043,40 @@ sequential enough that orchestration would cost more than it saves.
   - Departures: shelf gets `lat_correction=0` (no LAT correction) because the shelf grid spans 0°
     longitude; the shelf is deep enough that the LAT correction (~few metres) is negligible.
 
+- 2026-11-12, session J (GPU crash debugging — roughness fix, not sufficient):
+  - Added roughness-length guards (`ReynoldsScalingFunction`, `MomentumRoughnessLength`) to
+    `validation/severn_estuary.jl` and the isolation scripts. These guards prevent `DomainError`
+    from `R★ ^ 0.72` with negative `R★` — but the crash persists, so roughness is not the root cause.
+  - Added per-stage GPU sync points in both Oceananigans SRK (`split_runge_kutta.jl`) and
+    OnlineNesting `accumulate_fluxes!` to bisect the crash to a specific stage and operation.
+  - Created isolation scripts: `validation/test_shelf_gpu.jl` (shelf only + TPXO, no nesting),
+    `validation/test_nest_no_tpxo_gpu.jl` (nesting without TPXO). Neither has been run on GPU.
+  - Checks: syntax passes. Not run on GPU.
+
+- 2026-11-14, session K (GPU crash — systematic investigation):
+  - **Hypotheses disproved:**
+    (1) Unzeroed GPU memory: `new_data` uses `zeros(arch, ...)` on all architectures — fields
+        ARE zero-initialized on GPU. Deep halo cells contain 0.0, not garbage.
+    (2) Roughness-length DomainError: guards added in session J did not fix the crash.
+    (3) TEOS10 with zero salinity: `s(0) = √(32/40.19) ≈ 0.89`, safe.
+    (4) Halo fill mismatch: VBCs fill 1 halo cell but `volume_kernel_parameters` reads 6 deep —
+        the unfilled cells are zero, which is safe for TEOS10 and all other operations.
+  - **Exhaustively eliminated:** CATKE (sqrt guarded), WENO (no sqrt/log/^), split-explicit
+    (sqrt guarded), gravity-wave BCs (guarded), TPXO data loading, field initialization,
+    PartialCellBottom initialization, StateExchanger zero-init, RK substep (interior only).
+  - **Actual error message never captured:** `severn.log` shows `@info` output but the GPU
+    error went to stderr only. The error may not be a DomainError at all.
+  - **Added:** `validation/test_nesting_gpu_idealized.jl` — 5-step progressive test (plain
+    ocean → nesting → z-star → CATKE+WENO → PartialCellBottom) using no external data.
+    Identifies which component triggers the crash.
+  - **Added:** finer-grained sync points in `rk_substep!` for stage 3 (after
+    `compute_tracer_tendencies`, after callbacks, after `rk_substep_tracers`) and in
+    `accumulate_fluxes!` (after the kernel launches).
+  - **Next:** run `test_nesting_gpu_idealized.jl` on GPU with `2>&1` to capture the actual
+    error. If it passes, run the data-dependent isolation scripts. The actual error message
+    is the single most valuable piece of missing information.
+  - Checks: syntax passes; CPU test running. Not run on GPU.
+
 ## 7. Risks
 
 - **Open-boundary consistency with several layers.** The barotropic and baroclinic normal

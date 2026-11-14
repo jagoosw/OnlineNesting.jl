@@ -207,6 +207,12 @@ function accumulate_fluxes!(model, parameters)
     accumulate_side!(model, parameters, (i, first(j)-1:first(j)-1, k), (0, 1, 0),  Δt, (refinement, 1), tracer_flux_y)
     accumulate_side!(model, parameters, (i, last(j)+1:last(j)+1, k),   (0, 0, 0), -Δt, (refinement, 1), tracer_flux_y)
 
+    # TODO: remove after debugging
+    if model.clock.iteration == 0
+        Oceananigans.Architectures.synchronize(architecture(model.grid))
+        @info "  stage $(model.clock.stage)/$(model.timestepper.Nstages) accumulate_fluxes! work done (sign=$(parameters.sign))"
+    end
+
     return nothing
 end
 
