@@ -164,14 +164,10 @@ shelf_model = OceanOnlyModel(shelf_ocean;
 parent(shelf_ocean.model.tracers.S) .= max.(parent(shelf_ocean.model.tracers.S), 0)
 
 #####
-##### Timestep from CFL
+##### Timestep: use the same Δt as the two-level nest test (5793 s)
 #####
 
-Δx_min = Oceananigans.Grids.minimum_xspacing(shelf_grid)
-Δy_min = Oceananigans.Grids.minimum_yspacing(shelf_grid)
-Δ_min  = min(Δx_min, Δy_min)
-c_max  = sqrt(9.81 * 250)
-Δt     = 0.5 * Δ_min / c_max
+Δt = 5792.9
 @printf("Shelf-only test: Δt = %.1f s, grid = %d × %d × %d\n", Δt, size(shelf_grid)...)
 
 #####
@@ -180,4 +176,7 @@ c_max  = sqrt(9.81 * 250)
 
 @info "Starting single time step on GPU..."
 time_step!(shelf_model, Δt)
+Oceananigans.Architectures.synchronize(Oceananigans.Architectures.architecture(shelf_ocean.model.grid))
+S = shelf_ocean.model.tracers.S
+@printf("After time step: S ∈ [%.6f, %.6f]\n", minimum(interior(S)), maximum(interior(S)))
 @info "Time step completed without error."
