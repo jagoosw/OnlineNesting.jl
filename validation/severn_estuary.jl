@@ -117,7 +117,7 @@ severn_grid = nested_grid(bristol_grid;
 result = nested_timestep(
     (shelf_grid, bristol_grid, severn_grid),
     (0.5, 1.0, 2.0))
-Δt = result.timesteps[1]
+Δt = result.timesteps[1] / 4
 
 #####
 ##### Bathymetry (EMODnet referenced to MSL via TPXO lowest astronomical tide)
