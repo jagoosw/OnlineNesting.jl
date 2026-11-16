@@ -88,7 +88,7 @@ metadatum = Metadatum(:bottom_height; dataset=EMODnet2024(), region=BoundingBox(
 shelf_bottom = regrid_bathymetry(shelf_grid, metadatum; interpolation_passes=4, major_basins=1)
 refer_to_mean_sea_level!(shelf_bottom, 0; minimum_depth)
 
-shelf_grid = ImmersedBoundaryGrid(shelf_grid, PartialCellBottom(Array(interior(shelf_bottom, :, :, 1))))
+shelf_grid = ImmersedBoundaryGrid(shelf_grid, GridFittedBottom(Array(interior(shelf_bottom, :, :, 1))))
 
 #####
 ##### Tidal forcing on the shelf boundary

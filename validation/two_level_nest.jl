@@ -109,7 +109,7 @@ bristol_bottom = emodnet_bottom_height(bristol_grid;  interpolation_passes=2)
 
 restrict_bottom!(shelf_bottom, bristol_bottom; width, minimum_depth)
 
-immersed(grid, bottom) = ImmersedBoundaryGrid(grid, PartialCellBottom(Array(interior(bottom, :, :, 1))))
+immersed(grid, bottom) = ImmersedBoundaryGrid(grid, GridFittedBottom(Array(interior(bottom, :, :, 1))))
 shelf_grid, bristol_grid = immersed.((shelf_grid, bristol_grid), (shelf_bottom, bristol_bottom))
 
 #####

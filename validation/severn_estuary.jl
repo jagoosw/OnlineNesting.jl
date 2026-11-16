@@ -144,7 +144,7 @@ restrict_bottom!(shelf_bottom,   bristol_bottom; width, minimum_depth)
 sea = map(b -> Array(interior(b, :, :, 1)) .< 0,
           (shelf = shelf_bottom, bristol = bristol_bottom, severn = severn_bottom))
 
-immersed(grid, bottom) = ImmersedBoundaryGrid(grid, PartialCellBottom(Array(interior(bottom, :, :, 1))))
+immersed(grid, bottom) = ImmersedBoundaryGrid(grid, GridFittedBottom(Array(interior(bottom, :, :, 1))))
 shelf_grid, bristol_grid, severn_grid =
     immersed.((shelf_grid, bristol_grid, severn_grid),
               (shelf_bottom, bristol_bottom, severn_bottom))
