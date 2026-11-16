@@ -95,7 +95,8 @@ function nested_boundary_conditions(exchanger, grid)
                 v = (west=tangential, east=tangential, south=normal, north=normal),
                 NamedTuple{tracers}(map(Returns(reservoir), tracers))...)
 
-    boundary_conditions = parent_boundary_conditions(grid; variables=state[(:u, :v, tracers...)], bc_types)
+    schemes = (u = NormalRadiation(), v = NormalRadiation())
+    boundary_conditions = parent_boundary_conditions(grid; variables=state[(:u, :v, tracers...)], bc_types, schemes)
 
     # the elements of a tuple condition are tagged with their side here
     function radiation(transport, location, dimension, side)

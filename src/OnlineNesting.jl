@@ -14,8 +14,9 @@ using Oceananigans.AbstractOperations: KernelFunctionOperation
 using Oceananigans.Advection: Centered
 using Oceananigans.Architectures: architecture, on_architecture
 using Oceananigans.BoundaryConditions: FieldBoundaryConditions, GravityWaveRadiationBoundaryCondition,
-                                       LeftBoundary, NormalFlowBoundaryCondition, RightBoundary,
-                                       TidalHarmonics, TracerReservoir, ValueBoundaryCondition,
+                                       LeftBoundary, NormalFlowBoundaryCondition, NormalRadiation,
+                                       RightBoundary, TidalHarmonics, TracerReservoir,
+                                       ValueBoundaryCondition,
                                        fill_halo_regions!, regularize_boundary_condition
 using Oceananigans.Fields: CenterField, Field, OneField, compute!, instantiated_location, interior, interpolate, location, set!
 using Oceananigans.Grids: Bounded, Center, Face, Flat, LatitudeLongitudeGrid, MutableVerticalDiscretization, Open, RectilinearGrid,
